@@ -1,12 +1,14 @@
 import type Database from 'better-sqlite3';
 import { createLogger } from '../../lib/logger';
 import init001 from './migrations/001_init.sql?raw';
+import init002 from './migrations/002_match_events_event_id.sql?raw';
 
 const logger = createLogger('migrate');
 
 // Ordered list of migrations. Append new ones; never edit applied ones.
 const MIGRATIONS: { version: number; name: string; sql: string }[] = [
   { version: 1, name: '001_init', sql: init001 },
+  { version: 2, name: '002_match_events_event_id', sql: init002 },
 ];
 
 export function runMigrations(db: Database.Database): void {

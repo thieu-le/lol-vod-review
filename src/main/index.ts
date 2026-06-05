@@ -1,13 +1,23 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { IPC, PUSH } from '@shared/ipc-contract';
 import log from './lib/logger';
 import { paths } from './lib/paths';
+import { initAutoUpdater, quitAndInstallUpdate } from './lib/updater';
 import { getDb, closeDb } from './services/database/db';
 import { registerIpcHandlers } from './ipc/handlers';
 import { recorderController } from './services/recorder/recorderController';
+import { uploadController } from './services/youtube/uploadController';
+import { sweepExpired } from './services/files/retention';
+import { settingsRepository } from './services/database/repositories/settingsRepository';
+import { createAppTray, destroyTray } from './lib/tray';
+import { applyLaunchAtLogin, wasLaunchedAtLogin } from './lib/autostart';
 
 let mainWindow: BrowserWindow | null = null;
+// Distinguishes a real quit (tray "Quit" / before-quit) from the user clicking
+// the window's close button, which only hides the window to the tray.
+let isQuitting = false;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -26,7 +36,23 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.on('ready-to-show', () => mainWindow?.show());
+  // When launched at login we stay in the tray instead of popping the window.
+  const startHidden = wasLaunchedAtLogin();
+  mainWindow.on('ready-to-show', () => {
+    if (!startHidden) mainWindow?.show();
+  });
+
+  // Closing the window keeps the app alive in the tray so recording continues in
+  // the background. A genuine quit sets isQuitting first.
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow?.hide();
+    }
+  });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
 
   // Open external links in the default browser, never in-app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -41,6 +67,20 @@ function createWindow(): void {
   }
 }
 
+// Bring the window forward, recreating it if it was destroyed (e.g. on macOS).
+function showMainWindow(): void {
+  if (!mainWindow) {
+    createWindow();
+  }
+  mainWindow?.show();
+  mainWindow?.focus();
+}
+
+function quitApp(): void {
+  isQuitting = true;
+  app.quit();
+}
+
 function bootstrap(): void {
   mkdirSync(paths.logsDir(), { recursive: true });
   mkdirSync(paths.archiveDir(), { recursive: true });
@@ -51,22 +91,67 @@ function bootstrap(): void {
   registerIpcHandlers(() => mainWindow);
   createWindow();
   recorderController.start();
+
+  // Resume any interrupted uploads and clean up VODs past their retention window.
+  uploadController.start();
+  try {
+    sweepExpired();
+  } catch (err) {
+    log.error('retention sweep failed', err);
+  }
+
+  // Auto-update from GitHub Releases (packaged builds only). Notify the renderer
+  // when an update is staged so it can offer a one-click restart.
+  initAutoUpdater({
+    onUpdateDownloaded: (version) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(PUSH.updateDownloaded, version);
+      }
+    },
+  });
+  // Restart into the freshly downloaded update. isQuitting bypasses the
+  // close-to-tray handler so the app actually quits and the installer runs.
+  ipcMain.handle(IPC.updaterQuitAndInstall, () => {
+    isQuitting = true;
+    quitAndInstallUpdate();
+  });
+
+  // Background presence: keep the registered login item in sync with the saved
+  // preference, then install the tray menu.
+  applyLaunchAtLogin(settingsRepository().getLaunchAtLogin());
+  createAppTray({
+    onOpen: () => showMainWindow(),
+    getLaunchAtLogin: () => settingsRepository().getLaunchAtLogin(),
+    setLaunchAtLogin: (enabled) => {
+      settingsRepository().setLaunchAtLogin(enabled);
+      applyLaunchAtLogin(enabled);
+    },
+    onQuit: () => quitApp(),
+  });
 }
 
-app.whenReady().then(() => {
-  bootstrap();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+// Single-instance: a second launch focuses the running instance instead of
+// spawning another background recorder.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => showMainWindow());
+  app.whenReady().then(() => {
+    bootstrap();
+    app.on('activate', () => showMainWindow());
   });
-});
+}
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+// Intentionally do NOT quit when the window closes — the app lives in the tray
+// and keeps recording. Quit is explicit (tray "Quit").
+app.on('window-all-closed', () => {});
 
 app.on('before-quit', () => {
+  isQuitting = true;
   recorderController.stop();
   closeDb();
+  destroyTray();
 });
 
 process.on('uncaughtException', (err) => log.error('uncaughtException', err));

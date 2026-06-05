@@ -12,7 +12,9 @@ import { toMessage } from '../../lib/errors';
 import { obsClient } from '../obs/obsClient';
 import { riotLiveClient, resolveActiveChampion } from '../riot/liveClient';
 import type { LiveAllGameData } from '../riot/liveClient';
+import { parseEvents, computeKda, activePlayerIdentities } from '../riot/eventParser';
 import { matchRepository } from '../database/repositories/matchRepository';
+import { eventRepository } from '../database/repositories/eventRepository';
 import { eventSnapshotRepository } from '../database/repositories/eventSnapshotRepository';
 import { decideTransition } from './matchStateMachine';
 
@@ -182,6 +184,15 @@ export class RecorderController extends EventEmitter {
     eventSnapshotRepository().append(matchId, JSON.stringify(all));
 
     const events = all.events?.Events ?? [];
+
+    // Parse + persist structured events (idempotent across polls/reconnects),
+    // then recompute KDA over the full deduped set — never summed incrementally,
+    // so reconnect replays can't inflate the totals.
+    const parsed = parseEvents(events);
+    eventRepository().appendEvents(matchId, parsed);
+    const kda = computeKda(parsed, activePlayerIdentities(all.activePlayer));
+    matchRepository().updateKda(matchId, kda);
+
     const match = matchRepository().get(matchId);
     if (!match) return;
 

@@ -78,15 +78,31 @@ export interface FinalizeMatchInput {
   recordingError?: string | null;
 }
 
+export interface UpdateKdaInput {
+  kills: number;
+  deaths: number;
+  assists: number;
+}
+
+export interface SetYoutubeInput {
+  videoId: string;
+  url: string;
+}
+
 // Repository interface — the swappable seam (sqlite today, postgres later).
 export interface MatchRepository {
   create(input: CreateMatchInput): Match;
   markGameStarted(id: string, gameStartedAt: number): void;
   updateMeta(id: string, meta: MatchMetaInput): void;
+  updateKda(id: string, kda: UpdateKdaInput): void;
   finalize(id: string, input: FinalizeMatchInput): Match | null;
   setRecordingError(id: string, message: string): void;
+  setVodStatus(id: string, status: VodStatus): void;
+  setYoutube(id: string, input: SetYoutubeInput): void;
+  markArchived(id: string, archivedAt: number, vodLocalPath: string | null): void;
   get(id: string): Match | null;
   list(limit?: number): Match[];
+  listByVodStatus(status: VodStatus): Match[];
   delete(id: string): void;
 }
 
@@ -142,6 +158,18 @@ class SqliteMatchRepository implements MatchRepository {
       });
   }
 
+  // Overwrites KDA with the freshly recomputed totals. Always called with the
+  // full deduped event set (never summed incrementally), so reconnect replays
+  // can't inflate the count.
+  updateKda(id: string, kda: UpdateKdaInput): void {
+    this.db
+      .prepare(
+        `UPDATE matches SET kills = @kills, deaths = @deaths, assists = @assists, updated_at = @now
+         WHERE id = @id`
+      )
+      .run({ id, kills: kda.kills, deaths: kda.deaths, assists: kda.assists, now: Date.now() });
+  }
+
   finalize(id: string, input: FinalizeMatchInput): Match | null {
     this.db
       .prepare(
@@ -174,6 +202,34 @@ class SqliteMatchRepository implements MatchRepository {
       .run(message, Date.now(), id);
   }
 
+  setVodStatus(id: string, status: VodStatus): void {
+    this.db
+      .prepare('UPDATE matches SET vod_status = ?, updated_at = ? WHERE id = ?')
+      .run(status, Date.now(), id);
+  }
+
+  setYoutube(id: string, input: SetYoutubeInput): void {
+    this.db
+      .prepare(
+        `UPDATE matches SET youtube_video_id = @video_id, youtube_url = @url,
+           vod_status = 'uploaded', updated_at = @now
+         WHERE id = @id`
+      )
+      .run({ id, video_id: input.videoId, url: input.url, now: Date.now() });
+  }
+
+  // Records the archive transition. vodLocalPath is updated to the new archived
+  // location (or null once the file is gone) so "Open VOD" keeps working.
+  markArchived(id: string, archivedAt: number, vodLocalPath: string | null): void {
+    this.db
+      .prepare(
+        `UPDATE matches SET archived_at = @archived_at, vod_local_path = @vod_local_path,
+           vod_status = 'archived', updated_at = @now
+         WHERE id = @id`
+      )
+      .run({ id, archived_at: archivedAt, vod_local_path: vodLocalPath, now: Date.now() });
+  }
+
   get(id: string): Match | null {
     const row = this.db.prepare('SELECT * FROM matches WHERE id = ?').get(id) as
       | MatchRow
@@ -185,6 +241,13 @@ class SqliteMatchRepository implements MatchRepository {
     const rows = this.db
       .prepare('SELECT * FROM matches ORDER BY recording_started_at DESC LIMIT ?')
       .all(limit) as MatchRow[];
+    return rows.map(mapRow);
+  }
+
+  listByVodStatus(status: VodStatus): Match[] {
+    const rows = this.db
+      .prepare('SELECT * FROM matches WHERE vod_status = ? ORDER BY recording_started_at DESC')
+      .all(status) as MatchRow[];
     return rows.map(mapRow);
   }
 

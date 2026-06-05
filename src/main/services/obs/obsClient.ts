@@ -1,10 +1,16 @@
 import OBSWebSocket from 'obs-websocket-js';
 import { EventEmitter } from 'node:events';
 import type { ObsConnectionState } from '@shared/types';
+import type { ObsRecordingConfig } from '@shared/ipc-contract';
 import { config } from '../../lib/config';
 import { AppError, toMessage } from '../../lib/errors';
 import { createLogger } from '../../lib/logger';
 import { settingsRepository } from '../database/repositories/settingsRepository';
+
+export interface ApplyRecommendedResult {
+  applied: ObsRecordingConfig;
+  warnings: string[];
+}
 
 const logger = createLogger('obs');
 
@@ -101,6 +107,107 @@ export class ObsClient extends EventEmitter {
     this.assertConnected();
     const res = await this.obs.call('GetRecordStatus');
     return res.outputActive;
+  }
+
+  // ---- Recording config (read + apply recommended) ----
+
+  // Reads the recording-relevant OBS settings over the WebSocket so the UI can
+  // show what's configured and flag anything sub-optimal.
+  async getRecordingConfig(): Promise<ObsRecordingConfig> {
+    this.assertConnected();
+    const v = await this.obs.call('GetVideoSettings');
+    const [outputMode, encoder, quality, format] = await Promise.all([
+      this.getParam('Output', 'Mode'),
+      this.getParam('SimpleOutput', 'RecEncoder'),
+      this.getParam('SimpleOutput', 'RecQuality'),
+      this.getParam('SimpleOutput', 'RecFormat2'),
+    ]);
+    return {
+      outputMode: outputMode || 'Simple',
+      encoder,
+      quality,
+      format,
+      baseWidth: v.baseWidth,
+      baseHeight: v.baseHeight,
+      outputWidth: v.outputWidth,
+      outputHeight: v.outputHeight,
+      fps: v.fpsDenominator ? Math.round(v.fpsNumerator / v.fpsDenominator) : v.fpsNumerator,
+    };
+  }
+
+  // Pushes recommended recording settings into the active OBS profile: NVENC at
+  // 1440p60 in Simple mode, fragmented MP4 (crash-safe + upload-ready), and
+  // "High Quality, Medium File Size". Output is downscaled to 1440p only if the
+  // canvas is taller — never upscaled. Reads back to confirm what stuck.
+  async applyRecommendedRecording(encoder: string): Promise<ApplyRecommendedResult> {
+    this.assertConnected();
+    if (await this.isRecording()) {
+      throw new AppError('OBS_REQUEST_FAILED', 'Stop recording before changing OBS settings.');
+    }
+
+    const v = await this.obs.call('GetVideoSettings');
+    const targetHeight = 1440;
+    const scale = v.baseHeight > targetHeight ? targetHeight / v.baseHeight : 1;
+    const outputWidth = Math.round((v.baseWidth * scale) / 2) * 2; // keep dimensions even
+    const outputHeight = Math.round((v.baseHeight * scale) / 2) * 2;
+    await this.obs.call('SetVideoSettings', {
+      baseWidth: v.baseWidth,
+      baseHeight: v.baseHeight,
+      outputWidth,
+      outputHeight,
+      fpsNumerator: 60,
+      fpsDenominator: 1,
+    });
+
+    await this.setParam('Output', 'Mode', 'Simple');
+    await this.setParam('SimpleOutput', 'RecEncoder', encoder);
+    await this.setParam('SimpleOutput', 'RecQuality', 'Small'); // High Quality, Medium File Size
+    await this.setParam('SimpleOutput', 'RecFormat2', 'fragmented_mp4');
+
+    const applied = await this.getRecordingConfig();
+    const warnings: string[] = [];
+    if (applied.outputMode.toLowerCase() !== 'simple') {
+      warnings.push(
+        'OBS stayed in Advanced output mode. Switch to Simple (OBS → Settings → Output) or set the encoder/quality there yourself.'
+      );
+    }
+    if (applied.encoder !== encoder) {
+      warnings.push(
+        `Encoder didn't apply (OBS reports "${applied.encoder || 'unknown'}"). Your OBS version/GPU may use a different id — set the recording encoder to NVENC manually in OBS → Settings → Output.`
+      );
+    }
+    if (applied.format !== 'fragmented_mp4') {
+      warnings.push(
+        `Recording format is "${applied.format || 'unknown'}". Set it to "Fragmented MP4" in OBS for crash-safe, upload-ready files.`
+      );
+    }
+    if (applied.fps !== 60) {
+      warnings.push(`FPS reads ${applied.fps}; expected 60.`);
+    }
+    logger.info(
+      `Applied recommended OBS settings: ${applied.outputWidth}x${applied.outputHeight}@${applied.fps}, encoder=${applied.encoder}, format=${applied.format}`
+    );
+    return { applied, warnings };
+  }
+
+  private async getParam(category: string, name: string): Promise<string> {
+    try {
+      const r = await this.obs.call('GetProfileParameter', {
+        parameterCategory: category,
+        parameterName: name,
+      });
+      return (r.parameterValue ?? r.defaultParameterValue ?? '') as string;
+    } catch {
+      return '';
+    }
+  }
+
+  private async setParam(category: string, name: string, value: string): Promise<void> {
+    await this.obs.call('SetProfileParameter', {
+      parameterCategory: category,
+      parameterName: name,
+      parameterValue: value,
+    });
   }
 
   // ---- Replay buffer (designed-in; unused in Phase 1) ----
