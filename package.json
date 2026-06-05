@@ -1,6 +1,6 @@
 {
   "name": "lol-vod-review",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Automatic League of Legends VOD recorder & review tool",
   "author": "Thieu Le",
   "license": "MIT",
