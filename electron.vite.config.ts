@@ -16,6 +16,10 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: { index: resolve('src/main/index.ts') },
+        // ws (pulled in by the bundled obs-websocket-js) optionally requires
+        // these native speed-ups inside a try/catch and works without them.
+        // Keep them external so Rollup doesn't try to resolve them at build time.
+        external: ['bufferutil', 'utf-8-validate'],
       },
     },
   },
