@@ -12,7 +12,11 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
+    "doctor": "node scripts/doctor.mjs",
+    "import-icon": "node scripts/import-icon.mjs",
     "package": "electron-vite build && electron-builder",
+    "package:win": "electron-vite build && electron-builder --win",
+    "publish:win": "electron-vite build && electron-builder --win --publish always",
     "rebuild": "electron-builder install-app-deps",
     "postinstall": "electron-builder install-app-deps",
     "dump": "tsx tools/league-event-dumper/index.ts"
@@ -20,6 +24,8 @@
   "dependencies": {
     "better-sqlite3": "^11.8.1",
     "electron-log": "^5.2.4",
+    "electron-updater": "^6.8.3",
+    "googleapis": "^173.0.0",
     "obs-websocket-js": "^5.0.6",
     "uuid": "^11.0.5",
     "zod": "^3.24.1"

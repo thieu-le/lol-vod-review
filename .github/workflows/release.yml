@@ -1,0 +1,32 @@
+name: Release
+
+# Push a version tag (e.g. v0.1.1) and GitHub builds the Windows installer and
+# publishes a Release from it. Installed apps auto-update from that Release.
+# No personal access token is needed — CI uses the automatic GITHUB_TOKEN, which
+# is free on public repos.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # required so the workflow can create the Release
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+
+      # Builds + uploads the installer and latest.yml to the GitHub Release.
+      - run: npm run publish:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

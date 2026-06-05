@@ -7,3 +7,4 @@ live-events.jsonl
 .DS_Store
 .env
 .env.local
+electron-builder.env

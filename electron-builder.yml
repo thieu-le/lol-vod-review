@@ -18,3 +18,9 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+# Auto-update feed. electron-updater pulls release artifacts (+ latest.yml) from
+# the public GitHub repo, so installed builds update themselves with no git pull.
+publish:
+  provider: github
+  owner: thieu-le
+  repo: lol-vod-review
