@@ -10,7 +10,7 @@ import { config } from '../../lib/config';
 import { createLogger } from '../../lib/logger';
 import { toMessage } from '../../lib/errors';
 import { obsClient } from '../obs/obsClient';
-import { riotLiveClient } from '../riot/liveClient';
+import { riotLiveClient, resolveActiveChampion } from '../riot/liveClient';
 import type { LiveAllGameData } from '../riot/liveClient';
 import { matchRepository } from '../database/repositories/matchRepository';
 import { eventSnapshotRepository } from '../database/repositories/eventSnapshotRepository';
@@ -184,6 +184,16 @@ export class RecorderController extends EventEmitter {
     const events = all.events?.Events ?? [];
     const match = matchRepository().get(matchId);
     if (!match) return;
+
+    // Backfill light metadata while it's still missing (champion can take a
+    // few polls to appear in allPlayers as the game loads).
+    if (match.champion === null || match.gameMode === null) {
+      matchRepository().updateMeta(matchId, {
+        champion: resolveActiveChampion(all),
+        gameMode: all.gameData?.gameMode ?? null,
+        mapName: all.gameData?.mapName ?? null,
+      });
+    }
 
     // Mark game start the first time we see the GameStart event.
     if (match.gameStartedAt === null) {

@@ -62,6 +62,13 @@ export interface CreateMatchInput {
   recordingError?: string | null;
 }
 
+export interface MatchMetaInput {
+  champion?: string | null;
+  gameMode?: string | null;
+  mapName?: string | null;
+  queueId?: number | null;
+}
+
 export interface FinalizeMatchInput {
   endedAt: number;
   durationSeconds: number | null;
@@ -75,6 +82,7 @@ export interface FinalizeMatchInput {
 export interface MatchRepository {
   create(input: CreateMatchInput): Match;
   markGameStarted(id: string, gameStartedAt: number): void;
+  updateMeta(id: string, meta: MatchMetaInput): void;
   finalize(id: string, input: FinalizeMatchInput): Match | null;
   setRecordingError(id: string, message: string): void;
   get(id: string): Match | null;
@@ -110,6 +118,28 @@ class SqliteMatchRepository implements MatchRepository {
         'UPDATE matches SET game_started_at = ?, updated_at = ? WHERE id = ? AND game_started_at IS NULL'
       )
       .run(gameStartedAt, Date.now(), id);
+  }
+
+  // Only fills fields that are still null, so live polling never clobbers data.
+  updateMeta(id: string, meta: MatchMetaInput): void {
+    this.db
+      .prepare(
+        `UPDATE matches SET
+           champion = COALESCE(champion, @champion),
+           game_mode = COALESCE(game_mode, @game_mode),
+           map_name = COALESCE(map_name, @map_name),
+           queue_id = COALESCE(queue_id, @queue_id),
+           updated_at = @now
+         WHERE id = @id`
+      )
+      .run({
+        id,
+        champion: meta.champion ?? null,
+        game_mode: meta.gameMode ?? null,
+        map_name: meta.mapName ?? null,
+        queue_id: meta.queueId ?? null,
+        now: Date.now(),
+      });
   }
 
   finalize(id: string, input: FinalizeMatchInput): Match | null {

@@ -21,6 +21,15 @@ export interface LiveEvent {
 export interface LiveActivePlayer {
   summonerName?: string;
   riotIdGameName?: string;
+  riotId?: string;
+}
+
+export interface LivePlayer {
+  championName?: string;
+  summonerName?: string;
+  riotId?: string;
+  riotIdGameName?: string;
+  isBot?: boolean;
 }
 
 export interface LiveGameStats {
@@ -32,8 +41,26 @@ export interface LiveGameStats {
 
 export interface LiveAllGameData {
   activePlayer?: LiveActivePlayer;
+  allPlayers?: LivePlayer[];
   events?: { Events?: LiveEvent[] };
   gameData?: LiveGameStats;
+}
+
+// Resolves the local player's champion by matching the active player's
+// identity (riotId / riotIdGameName / summonerName) against allPlayers.
+export function resolveActiveChampion(all: LiveAllGameData): string | null {
+  const players = all.allPlayers ?? [];
+  const ap = all.activePlayer;
+  if (!ap || players.length === 0) return null;
+
+  const keys = [ap.riotId, ap.riotIdGameName, ap.summonerName].filter(Boolean);
+  const match = players.find(
+    (p) =>
+      (p.riotId && keys.includes(p.riotId)) ||
+      (p.riotIdGameName && keys.includes(p.riotIdGameName)) ||
+      (p.summonerName && keys.includes(p.summonerName))
+  );
+  return match?.championName ?? null;
 }
 
 // Dedicated agent: TLS verification disabled, scoped strictly to the
