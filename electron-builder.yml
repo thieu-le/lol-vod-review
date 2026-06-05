@@ -1,0 +1,20 @@
+appId: com.thieule.lolvodreview
+productName: LoL VOD Review
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+  - package.json
+asarUnpack:
+  - "**/*.node"
+mac:
+  category: public.app-category.video
+  target:
+    - dmg
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
