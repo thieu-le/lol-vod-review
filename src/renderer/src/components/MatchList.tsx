@@ -21,7 +21,13 @@ const STATUS_STYLE: Record<string, string> = {
   failed: 'bg-red-700/30 text-red-300',
 };
 
-export function MatchList({ matches }: { matches: Match[] }) {
+export function MatchList({
+  matches,
+  onSelect,
+}: {
+  matches: Match[];
+  onSelect: (id: string) => void;
+}) {
   if (matches.length === 0) {
     return (
       <div className="px-6 py-16 text-center text-gray-500">
@@ -33,7 +39,11 @@ export function MatchList({ matches }: { matches: Match[] }) {
   return (
     <ul className="divide-y divide-edge">
       {matches.map((m) => (
-        <li key={m.id} className="flex items-center justify-between px-6 py-3 hover:bg-panel/60">
+        <li
+          key={m.id}
+          onClick={() => onSelect(m.id)}
+          className="flex cursor-pointer items-center justify-between px-6 py-3 hover:bg-panel/60"
+        >
           <div className="flex flex-col">
             <span className="font-medium text-white">
               {m.champion ?? 'Unknown champ'}
@@ -52,6 +62,11 @@ export function MatchList({ matches }: { matches: Match[] }) {
               {m.kills}/{m.deaths}/{m.assists}
             </span>
             <span className="text-gray-400">{fmtDuration(m.durationSeconds)}</span>
+            {m.youtubeUrl && (
+              <span title="Watchable on YouTube" className="text-xs text-green-400">
+                ▶
+              </span>
+            )}
             <span
               className={`rounded px-2 py-0.5 text-xs ${
                 STATUS_STYLE[m.vodStatus] ?? 'bg-gray-500/20 text-gray-300'

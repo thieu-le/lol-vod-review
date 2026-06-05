@@ -1,19 +1,27 @@
 import { useState } from 'react';
 import { useRecorder } from './hooks/useRecorder';
 import { StatusBar } from './components/StatusBar';
+import { ObsBanner } from './components/ObsBanner';
+import { UpdateBanner } from './components/UpdateBanner';
 import { MatchList } from './components/MatchList';
 import { ObsSettingsCard } from './components/ObsSettingsCard';
+import { RecordingSettingsCard } from './components/RecordingSettingsCard';
+import { YoutubeSettingsCard } from './components/YoutubeSettingsCard';
+import { MatchDetailPage } from './pages/MatchDetailPage';
 
 type Tab = 'matches' | 'settings';
 
 export default function App() {
-  const { status, matches } = useRecorder();
+  const { status, matches, refreshMatches } = useRecorder();
   const [tab, setTab] = useState<Tab>('matches');
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const inGame = status?.state === 'in_game';
 
   return (
     <div className="flex h-full flex-col bg-ink text-gray-200">
       <StatusBar status={status} />
+      <UpdateBanner />
+      <ObsBanner status={status} onOpenSettings={() => setTab('settings')} />
 
       <div className="flex items-center justify-between border-b border-edge px-6 py-2">
         <nav className="flex gap-1">
@@ -49,10 +57,23 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto">
         {tab === 'matches' ? (
-          <MatchList matches={matches} />
+          selectedMatchId ? (
+            <MatchDetailPage
+              matchId={selectedMatchId}
+              onBack={() => setSelectedMatchId(null)}
+              onDeleted={() => {
+                setSelectedMatchId(null);
+                void refreshMatches();
+              }}
+            />
+          ) : (
+            <MatchList matches={matches} onSelect={setSelectedMatchId} />
+          )
         ) : (
-          <div className="p-6">
+          <div className="space-y-6 p-6">
             <ObsSettingsCard />
+            <YoutubeSettingsCard />
+            <RecordingSettingsCard />
           </div>
         )}
       </main>
