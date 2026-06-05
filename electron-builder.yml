@@ -24,3 +24,6 @@ publish:
   provider: github
   owner: thieu-le
   repo: lol-vod-review
+  # Publish releases directly (not as a draft) so the installer is downloadable
+  # and the auto-updater can find it the moment CI finishes.
+  releaseType: release
