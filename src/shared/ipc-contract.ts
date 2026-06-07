@@ -29,6 +29,8 @@ export const IPC = {
   settingsSetRetention: 'settings:setRetention',
   settingsGetLaunchAtLogin: 'settings:getLaunchAtLogin',
   settingsSetLaunchAtLogin: 'settings:setLaunchAtLogin',
+  settingsGetRankedOnly: 'settings:getRankedOnly',
+  settingsSetRankedOnly: 'settings:setRankedOnly',
   vodOpenLocal: 'vod:openLocal',
   vodReveal: 'vod:reveal',
   maintenanceBackfill: 'maintenance:backfill',
@@ -173,6 +175,8 @@ export interface RendererApi {
     setRetention(policy: RetentionPolicy): Promise<RetentionPolicy>;
     getLaunchAtLogin(): Promise<boolean>;
     setLaunchAtLogin(enabled: boolean): Promise<boolean>;
+    getRankedOnly(): Promise<boolean>;
+    setRankedOnly(enabled: boolean): Promise<boolean>;
   };
   maintenance: {
     backfill(): Promise<BackfillSummary>;

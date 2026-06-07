@@ -12,7 +12,9 @@ import { toMessage } from '../../lib/errors';
 import { obsClient } from '../obs/obsClient';
 import { riotLiveClient, resolveActiveChampion } from '../riot/liveClient';
 import type { LiveAllGameData } from '../riot/liveClient';
+import { lcuClient } from '../riot/lcuClient';
 import { parseEvents, computeKda, activePlayerIdentities } from '../riot/eventParser';
+import { settingsRepository } from '../database/repositories/settingsRepository';
 import { matchRepository } from '../database/repositories/matchRepository';
 import { eventRepository } from '../database/repositories/eventRepository';
 import { eventSnapshotRepository } from '../database/repositories/eventSnapshotRepository';
@@ -29,6 +31,9 @@ export class RecorderController extends EventEmitter {
   private lastError: string | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
   private ticking = false;
+  // Set when ranked-only mode tells us to skip the current (non-ranked) game.
+  // We then wait, debounced, for that game to end before recording can resume.
+  private ignoringGame = false;
 
   start(): void {
     // Keep OBS connected and start polling Riot.
@@ -74,6 +79,26 @@ export class RecorderController extends EventEmitter {
     try {
       const gameActive = await riotLiveClient.isGameActive();
 
+      // Ranked-only: once we've decided to skip a game, just wait (debounced)
+      // for it to end so we don't re-query the client API every poll.
+      if (this.ignoringGame) {
+        if (gameActive) {
+          this.consecutiveFailures = 0;
+        } else if (++this.consecutiveFailures >= config.recorder.endDebounceFailures) {
+          this.ignoringGame = false;
+          this.consecutiveFailures = 0;
+          logger.info('Ignored (non-ranked) game ended; recorder back to idle');
+        }
+        return;
+      }
+
+      // Gate a fresh game on the ranked-only setting before starting a match.
+      if (this.state === 'idle' && gameActive && (await this.shouldSkipGame())) {
+        this.ignoringGame = true;
+        this.consecutiveFailures = 0;
+        return;
+      }
+
       // While in a game, capture data each poll.
       if (this.state === 'in_game' && gameActive && this.currentMatchId) {
         await this.captureDuringGame(this.currentMatchId);
@@ -103,6 +128,23 @@ export class RecorderController extends EventEmitter {
       this.ticking = false;
       this.scheduleTick();
     }
+  }
+
+  // Ranked-only gate. Returns true only on a POSITIVE non-ranked determination.
+  // If the League client API can't be reached we record anyway, so a flaky
+  // client never causes a ranked game to be silently missed.
+  private async shouldSkipGame(): Promise<boolean> {
+    if (!settingsRepository().getRankedOnly()) return false;
+    const queue = await lcuClient.getCurrentQueue();
+    if (queue === null) {
+      logger.warn('Ranked-only on, but League client queue is unknown; recording anyway');
+      return false;
+    }
+    if (!queue.isRanked) {
+      logger.info(`Ranked-only: skipping non-ranked queue (${queue.queueId ?? '?'})`);
+      return true;
+    }
+    return false;
   }
 
   private async beginMatch(): Promise<void> {

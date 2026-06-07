@@ -67,6 +67,9 @@ const api: RendererApi = {
     getLaunchAtLogin: () => ipcRenderer.invoke(IPC.settingsGetLaunchAtLogin) as Promise<boolean>,
     setLaunchAtLogin: (enabled: boolean) =>
       ipcRenderer.invoke(IPC.settingsSetLaunchAtLogin, enabled) as Promise<boolean>,
+    getRankedOnly: () => ipcRenderer.invoke(IPC.settingsGetRankedOnly) as Promise<boolean>,
+    setRankedOnly: (enabled: boolean) =>
+      ipcRenderer.invoke(IPC.settingsSetRankedOnly, enabled) as Promise<boolean>,
   },
   maintenance: {
     backfill: () => ipcRenderer.invoke(IPC.maintenanceBackfill) as Promise<BackfillSummary>,

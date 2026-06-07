@@ -21,6 +21,10 @@ const KEY_YT_SECRET = 'youtube.secret.enc'; // encrypted OAuth client secret
 const KEY_YT_TOKEN = 'youtube.token.enc'; // encrypted OAuth refresh token
 const KEY_UPLOAD_MODE = 'uploadMode'; // UploadMode string
 const KEY_LAUNCH_AT_LOGIN = 'launchAtLogin'; // boolean
+const KEY_RANKED_ONLY = 'rankedOnly'; // boolean
+
+// Default off: record every game. Users who only care about ranked opt in.
+const DEFAULT_RANKED_ONLY = false;
 
 // New installs default to launching at login so the recorder is running in the
 // background before a game starts (matches the "set it and forget it" intent).
@@ -43,6 +47,8 @@ export interface SettingsRepository {
   setUploadMode(mode: UploadMode): void;
   getLaunchAtLogin(): boolean;
   setLaunchAtLogin(enabled: boolean): void;
+  getRankedOnly(): boolean;
+  setRankedOnly(enabled: boolean): void;
   getYoutubeConfig(): YoutubeConfig;
   setYoutubeConfig(input: { clientId: string; clientSecret?: string }): void;
   hasYoutubeSecret(): boolean;
@@ -122,6 +128,15 @@ class SqliteSettingsRepository implements SettingsRepository {
 
   setLaunchAtLogin(enabled: boolean): void {
     this.setRaw(KEY_LAUNCH_AT_LOGIN, enabled);
+  }
+
+  getRankedOnly(): boolean {
+    const v = this.getRaw(KEY_RANKED_ONLY);
+    return typeof v === 'boolean' ? v : DEFAULT_RANKED_ONLY;
+  }
+
+  setRankedOnly(enabled: boolean): void {
+    this.setRaw(KEY_RANKED_ONLY, enabled);
   }
 
   getYoutubeConfig(): YoutubeConfig {

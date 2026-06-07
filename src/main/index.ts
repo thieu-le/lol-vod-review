@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { IPC, PUSH } from '@shared/ipc-contract';
@@ -81,9 +81,33 @@ function quitApp(): void {
   app.quit();
 }
 
+// YouTube's embed player rejects a file:// embedder. In a packaged build the
+// renderer loads from file:// (no web origin), which makes the in-app VOD embed
+// fail with a player "configuration error". Presenting a real https Referer for
+// YouTube's hosts makes the Unlisted video play. (Dev loads over http://localhost
+// and already works; this is harmless there.)
+function enableYoutubeEmbedPlayback(): void {
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    {
+      urls: [
+        'https://*.youtube-nocookie.com/*',
+        'https://*.youtube.com/*',
+        'https://*.ytimg.com/*',
+        'https://*.googlevideo.com/*',
+      ],
+    },
+    (details, callback) => {
+      details.requestHeaders['Referer'] = 'https://www.youtube.com/';
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
+}
+
 function bootstrap(): void {
   mkdirSync(paths.logsDir(), { recursive: true });
   mkdirSync(paths.archiveDir(), { recursive: true });
+
+  enableYoutubeEmbedPlayback();
 
   // Open DB + run migrations before anything touches it.
   getDb();

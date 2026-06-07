@@ -148,6 +148,13 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
     return parsed;
   });
 
+  ipcMain.handle(IPC.settingsGetRankedOnly, () => settingsRepository().getRankedOnly());
+  ipcMain.handle(IPC.settingsSetRankedOnly, (_e, enabled: unknown) => {
+    const parsed = z.boolean().parse(enabled);
+    settingsRepository().setRankedOnly(parsed);
+    return parsed;
+  });
+
   // ---- YouTube account + settings ----
   ipcMain.handle(IPC.youtubeStatus, () => getAuthStatus());
   ipcMain.handle(IPC.youtubeConnect, async (): Promise<YoutubeConnectResult> => {

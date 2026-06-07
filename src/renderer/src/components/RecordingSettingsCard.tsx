@@ -15,11 +15,23 @@ export function RecordingSettingsCard() {
   const [backfilling, setBackfilling] = useState(false);
   const [summary, setSummary] = useState<BackfillSummary | null>(null);
   const [launchAtLogin, setLaunchAtLogin] = useState<boolean | null>(null);
+  const [rankedOnly, setRankedOnly] = useState<boolean | null>(null);
 
   useEffect(() => {
     void window.api.settings.getRetention().then(setPolicy);
     void window.api.settings.getLaunchAtLogin().then(setLaunchAtLogin);
+    void window.api.settings.getRankedOnly().then(setRankedOnly);
   }, []);
+
+  async function toggleRankedOnly(next: boolean) {
+    const prev = rankedOnly;
+    setRankedOnly(next);
+    try {
+      setRankedOnly(await window.api.settings.setRankedOnly(next));
+    } catch {
+      setRankedOnly(prev);
+    }
+  }
 
   async function toggleLaunch(next: boolean) {
     const prev = launchAtLogin;
@@ -75,6 +87,25 @@ export function RecordingSettingsCard() {
       <p className="mt-1 text-xs text-gray-500">
         Recordings are never deleted before a successful upload.
       </p>
+
+      <div className="mt-4 border-t border-edge pt-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">What to record</h3>
+        <label className="mt-2 flex items-center gap-2 text-sm text-gray-200">
+          <input
+            type="checkbox"
+            checked={rankedOnly ?? false}
+            disabled={rankedOnly === null}
+            onChange={(e) => void toggleRankedOnly(e.target.checked)}
+            className="h-4 w-4 accent-blue-500"
+          />
+          Record ranked games only
+        </label>
+        <p className="mt-1 text-xs text-gray-500">
+          Skips normals, ARAM, bots and customs. Detected via the League client, so the client must
+          be running. If the queue can&apos;t be determined, the game is recorded so ranked is never
+          missed.
+        </p>
+      </div>
 
       <div className="mt-4 border-t border-edge pt-4">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Startup</h3>
