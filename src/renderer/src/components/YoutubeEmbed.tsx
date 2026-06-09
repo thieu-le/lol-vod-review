@@ -20,9 +20,12 @@ export function YoutubeEmbed({
 }) {
   const start = seek ? Math.max(0, Math.floor(seek.seconds)) : 0;
   const autoplay = seek ? 1 : 0;
+  // Tell the embed our page origin so its postMessage origin check passes.
+  // (The packaged app serves the renderer from app://, a valid non-null origin.)
+  const origin = encodeURIComponent(window.location.origin);
   const src =
     `https://www.youtube-nocookie.com/embed/${videoId}` +
-    `?start=${start}&autoplay=${autoplay}&rel=0&modestbranding=1`;
+    `?start=${start}&autoplay=${autoplay}&rel=0&modestbranding=1&origin=${origin}`;
 
   return (
     <div className="aspect-video w-full overflow-hidden rounded-lg border border-edge bg-black">

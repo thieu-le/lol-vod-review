@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
-import { join } from 'node:path';
+import { app, BrowserWindow, ipcMain, net, protocol, session, shell } from 'electron';
+import { join, normalize, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { mkdirSync } from 'node:fs';
 import { IPC, PUSH } from '@shared/ipc-contract';
 import log from './lib/logger';
@@ -13,6 +14,22 @@ import { sweepExpired } from './services/files/retention';
 import { settingsRepository } from './services/database/repositories/settingsRepository';
 import { createAppTray, destroyTray } from './lib/tray';
 import { applyLaunchAtLogin, wasLaunchedAtLogin } from './lib/autostart';
+
+// Custom scheme the packaged renderer is served from. Loading over file://
+// gives the page a null origin, which YouTube's embed player rejects (error
+// "152"). A standard+secure scheme gives a real https-like origin the embed
+// accepts, while keeping the CSP `'self'` rules valid.
+const APP_SCHEME = 'app';
+const APP_ORIGIN = `${APP_SCHEME}://lol-vod-review`;
+
+// Must run before app `ready`: declare the scheme as standard (real origin) and
+// secure (treated like https — no mixed-content downgrade for the embed).
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: APP_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true },
+  },
+]);
 
 let mainWindow: BrowserWindow | null = null;
 // Distinguishes a real quit (tray "Quit" / before-quit) from the user clicking
@@ -61,10 +78,30 @@ function createWindow(): void {
   });
 
   if (process.env.ELECTRON_RENDERER_URL) {
+    // Dev: Vite serves the renderer over http://localhost (already a valid origin).
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
-    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+    // Packaged: serve via the custom app:// scheme so the page has a real origin.
+    void mainWindow.loadURL(`${APP_ORIGIN}/index.html`);
   }
+}
+
+// Serve the built renderer (out/renderer) over app://. Files are resolved
+// relative to the renderer dir; the path is normalized and confined to that dir
+// to prevent traversal outside it.
+function registerAppProtocol(): void {
+  const rendererDir = join(__dirname, '../renderer');
+  protocol.handle(APP_SCHEME, (request) => {
+    const { pathname } = new URL(request.url);
+    const decoded = decodeURIComponent(pathname);
+    const rel = decoded === '/' || decoded === '' ? 'index.html' : decoded.replace(/^\/+/, '');
+    const filePath = normalize(join(rendererDir, rel));
+    // Confine to the renderer directory.
+    if (filePath !== rendererDir && !filePath.startsWith(rendererDir + sep)) {
+      return new Response('Not found', { status: 404 });
+    }
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
 }
 
 // Bring the window forward, recreating it if it was destroyed (e.g. on macOS).
@@ -108,6 +145,7 @@ function bootstrap(): void {
   mkdirSync(paths.archiveDir(), { recursive: true });
 
   enableYoutubeEmbedPlayback();
+  registerAppProtocol();
 
   // Open DB + run migrations before anything touches it.
   getDb();
