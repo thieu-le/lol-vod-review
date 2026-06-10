@@ -50,7 +50,40 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // The match VOD plays in a <webview> pointed at youtube.com/embed. Loading
+      // it as the guest's own top-level document (rather than a cross-origin
+      // iframe inside our app) avoids the embedder-origin check that fails with a
+      // null/non-https origin (YouTube error "152").
+      webviewTag: true,
     },
+  });
+
+  // Lock down the VOD <webview> guest: no Node, sandboxed, allow autoplay so the
+  // player starts when the user clicks a timeline moment.
+  mainWindow.webContents.on('will-attach-webview', (_e, webPreferences) => {
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+  });
+  mainWindow.webContents.on('did-attach-webview', (_e, guest) => {
+    // Ad/redirect popups from the embed open in the system browser, never a window.
+    guest.setWindowOpenHandler(({ url }) => {
+      void shell.openExternal(url);
+      return { action: 'deny' };
+    });
+  });
+
+  // DevTools toggle (F12 / Ctrl+Shift+I / Cmd+Opt+I) — available in packaged
+  // builds so player/network issues can be inspected. The host DevTools "top"
+  // target dropdown also lists the <webview> guest for inspecting the player.
+  mainWindow.webContents.on('before-input-event', (_e, input) => {
+    if (input.type !== 'keyDown') return;
+    const key = input.key.toLowerCase();
+    const toggle =
+      key === 'f12' ||
+      ((input.control || input.meta) && input.shift && key === 'i') ||
+      (input.meta && input.alt && key === 'i');
+    if (toggle) mainWindow?.webContents.toggleDevTools();
   });
 
   // When launched at login we stay in the tray instead of popping the window.
