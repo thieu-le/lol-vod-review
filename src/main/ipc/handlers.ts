@@ -73,6 +73,11 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
     return eventRepository().listForMatch(idSchema.parse(id));
   });
 
+  ipcMain.handle(IPC.matchesGetHighlights, (_e, ids: unknown) => {
+    const parsed = z.array(idSchema).max(200).parse(ids);
+    return eventRepository().highlightsForMatches(parsed);
+  });
+
   ipcMain.handle(IPC.matchesDelete, (_e, id: unknown) => {
     matchRepository().delete(idSchema.parse(id));
   });

@@ -49,6 +49,7 @@ export function retroBackfillMatch(matchId: string): number {
   const identities = activePlayerIdentities(last?.activePlayer);
   if (identities.length > 0) {
     matchRepository().updateKda(matchId, computeKda(events, identities));
+    matchRepository().setPlayerIdentities(matchId, identities);
   }
 
   // Backfill light metadata (COALESCE in updateMeta preserves existing values).

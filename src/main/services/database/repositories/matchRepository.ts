@@ -19,6 +19,7 @@ interface MatchRow {
   kills: number;
   deaths: number;
   assists: number;
+  player_identities: string | null;
   vod_local_path: string | null;
   vod_status: string;
   youtube_video_id: string | null;
@@ -45,6 +46,7 @@ function mapRow(r: MatchRow): Match {
     kills: r.kills,
     deaths: r.deaths,
     assists: r.assists,
+    playerIdentities: r.player_identities ? (JSON.parse(r.player_identities) as string[]) : [],
     vodLocalPath: r.vod_local_path,
     vodStatus: r.vod_status as VodStatus,
     youtubeVideoId: r.youtube_video_id,
@@ -95,6 +97,7 @@ export interface MatchRepository {
   markGameStarted(id: string, gameStartedAt: number): void;
   updateMeta(id: string, meta: MatchMetaInput): void;
   updateKda(id: string, kda: UpdateKdaInput): void;
+  setPlayerIdentities(id: string, identities: string[]): void;
   finalize(id: string, input: FinalizeMatchInput): Match | null;
   setRecordingError(id: string, message: string): void;
   setVodStatus(id: string, status: VodStatus): void;
@@ -168,6 +171,18 @@ class SqliteMatchRepository implements MatchRepository {
          WHERE id = @id`
       )
       .run({ id, kills: kda.kills, deaths: kda.deaths, assists: kda.assists, now: Date.now() });
+  }
+
+  // Only set once (first non-empty observation wins); identity doesn't change
+  // mid-game, so later polls never need to overwrite it.
+  setPlayerIdentities(id: string, identities: string[]): void {
+    if (identities.length === 0) return;
+    this.db
+      .prepare(
+        `UPDATE matches SET player_identities = ?, updated_at = ?
+         WHERE id = ? AND player_identities IS NULL`
+      )
+      .run(JSON.stringify(identities), Date.now(), id);
   }
 
   finalize(id: string, input: FinalizeMatchInput): Match | null {

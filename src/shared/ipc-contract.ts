@@ -16,6 +16,7 @@ export const IPC = {
   matchesList: 'matches:list',
   matchesGet: 'matches:get',
   matchesGetEvents: 'matches:getEvents',
+  matchesGetHighlights: 'matches:getHighlights',
   matchesDelete: 'matches:delete',
   recorderGetStatus: 'recorder:getStatus',
   recorderStartManual: 'recorder:startManual',
@@ -105,6 +106,14 @@ export interface BackfillSummary {
   eventsInserted: number;
 }
 
+// Player-attributed highlight signals for a match, derived from stored events.
+// `killStreak` is the largest Multikill streak (2=double … 5=penta), null if none.
+export interface MatchHighlights {
+  firstBlood: boolean;
+  ace: boolean;
+  killStreak: number | null;
+}
+
 // Result of opening/revealing a local VOD file.
 export interface VodOpenResult {
   ok: boolean;
@@ -149,6 +158,8 @@ export interface RendererApi {
     list(limit?: number): Promise<Match[]>;
     get(id: string): Promise<Match | null>;
     getEvents(id: string): Promise<MatchEvent[]>;
+    // Batched: one call for all visible matches; keys are match ids.
+    getHighlights(ids: string[]): Promise<Record<string, MatchHighlights>>;
     delete(id: string): Promise<void>;
   };
   vod: {

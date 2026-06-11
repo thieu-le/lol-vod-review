@@ -79,7 +79,7 @@ export async function connect(): Promise<YoutubeAuthStatus> {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(
         '<html><body style="font-family:sans-serif;background:#0d1117;color:#e6edf3;padding:2rem">' +
-          '<h2>You can close this tab and return to LoL VOD Review.</h2></body></html>'
+          '<h2>You can close this tab and return to Never Tilt Again.</h2></body></html>'
       );
       clearTimeout(timer);
       if (err) reject(new AppError('UNKNOWN', `YouTube authorization failed: ${err}`));

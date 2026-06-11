@@ -44,7 +44,7 @@ function createWindow(): void {
     minHeight: 560,
     show: false,
     backgroundColor: '#0d1117',
-    title: 'LoL VOD Review',
+    title: 'Never Tilt Again',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

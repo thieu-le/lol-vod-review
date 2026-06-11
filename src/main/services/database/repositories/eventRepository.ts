@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import type { MatchEvent } from '@shared/types';
+import type { MatchHighlights } from '@shared/ipc-contract';
 import { getDb } from '../db';
 import type { ParsedEvent } from '../../riot/eventParser';
 
@@ -39,6 +40,7 @@ function mapRow(r: MatchEventRow): MatchEvent {
 export interface EventRepository {
   appendEvents(matchId: string, events: ParsedEvent[]): number;
   listForMatch(matchId: string): MatchEvent[];
+  highlightsForMatches(matchIds: string[]): Record<string, MatchHighlights>;
 }
 
 class SqliteEventRepository implements EventRepository {
@@ -91,6 +93,57 @@ class SqliteEventRepository implements EventRepository {
       )
       .all(matchId) as MatchEventRow[];
     return rows.map(mapRow);
+  }
+
+  // Player-attributed highlight signals across many matches in one query.
+  // FirstBlood/Ace don't populate killer_name (Riot uses Recipient/Acer keys),
+  // so attribution reads the verbatim payload and compares against the match's
+  // stored player_identities.
+  highlightsForMatches(matchIds: string[]): Record<string, MatchHighlights> {
+    const out: Record<string, MatchHighlights> = {};
+    if (matchIds.length === 0) return out;
+
+    const placeholders = matchIds.map(() => '?').join(',');
+    const rows = this.db
+      .prepare(
+        `SELECT e.match_id, e.event_type, e.payload, m.player_identities
+         FROM match_events e
+         JOIN matches m ON m.id = e.match_id
+         WHERE e.event_type IN ('FirstBlood', 'Multikill', 'Ace')
+           AND e.match_id IN (${placeholders})`
+      )
+      .all(...matchIds) as {
+      match_id: string;
+      event_type: string;
+      payload: string | null;
+      player_identities: string | null;
+    }[];
+
+    for (const r of rows) {
+      if (!r.player_identities || !r.payload) continue;
+      let identities: string[];
+      let payload: Record<string, unknown>;
+      try {
+        identities = JSON.parse(r.player_identities) as string[];
+        payload = JSON.parse(r.payload) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const ids = new Set(identities);
+      const isPlayer = (v: unknown) => typeof v === 'string' && ids.has(v);
+
+      const h = (out[r.match_id] ??= { firstBlood: false, ace: false, killStreak: null });
+      if (r.event_type === 'FirstBlood' && isPlayer(payload.Recipient)) {
+        h.firstBlood = true;
+      } else if (r.event_type === 'Ace' && isPlayer(payload.Acer)) {
+        h.ace = true;
+      } else if (r.event_type === 'Multikill' && isPlayer(payload.KillerName)) {
+        const streak = typeof payload.KillStreak === 'number' ? payload.KillStreak : 2;
+        h.killStreak = Math.max(h.killStreak ?? 0, streak);
+      }
+    }
+
+    return out;
   }
 }
 

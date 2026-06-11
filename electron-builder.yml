@@ -1,5 +1,7 @@
+# appId is the app's stable identity for installers/updates — never rename it,
+# or Windows treats the next update as a brand-new app instead of an upgrade.
 appId: com.thieule.lolvodreview
-productName: LoL VOD Review
+productName: Never Tilt Again
 directories:
   buildResources: build
   output: dist

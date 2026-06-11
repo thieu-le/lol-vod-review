@@ -18,7 +18,7 @@ export interface TrayHandlers {
 function buildMenu(): Menu {
   const h = handlers!;
   return Menu.buildFromTemplate([
-    { label: 'Open LoL VOD Review', click: () => h.onOpen() },
+    { label: 'Open Never Tilt Again', click: () => h.onOpen() },
     { type: 'separator' },
     {
       label: 'Launch at login',
@@ -36,7 +36,7 @@ export function createAppTray(h: TrayHandlers): Tray {
   handlers = h;
 
   tray = new Tray(nativeImage.createFromDataURL(TRAY_ICON_DATA_URL));
-  tray.setToolTip('LoL VOD Review');
+  tray.setToolTip('Never Tilt Again');
   tray.setContextMenu(buildMenu());
   // Windows: a single click should surface the window.
   tray.on('click', () => h.onOpen());

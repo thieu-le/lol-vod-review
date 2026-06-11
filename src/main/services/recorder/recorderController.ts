@@ -232,8 +232,11 @@ export class RecorderController extends EventEmitter {
     // so reconnect replays can't inflate the totals.
     const parsed = parseEvents(events);
     eventRepository().appendEvents(matchId, parsed);
-    const kda = computeKda(parsed, activePlayerIdentities(all.activePlayer));
-    matchRepository().updateKda(matchId, kda);
+    const identities = activePlayerIdentities(all.activePlayer);
+    matchRepository().updateKda(matchId, computeKda(parsed, identities));
+    // Persist the player's identity once (no-op after the first observation);
+    // event attribution (highlights) joins against it later.
+    matchRepository().setPlayerIdentities(matchId, identities);
 
     const match = matchRepository().get(matchId);
     if (!match) return;

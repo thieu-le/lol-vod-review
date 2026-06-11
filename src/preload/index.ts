@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { IPC, PUSH } from '@shared/ipc-contract';
 import type {
   BackfillSummary,
+  MatchHighlights,
   ObsApplyResult,
   ObsRecordingConfig,
   ObsSettingsInput,
@@ -36,6 +37,8 @@ const api: RendererApi = {
     list: (limit) => ipcRenderer.invoke(IPC.matchesList, limit) as Promise<Match[]>,
     get: (id) => ipcRenderer.invoke(IPC.matchesGet, id) as Promise<Match | null>,
     getEvents: (id) => ipcRenderer.invoke(IPC.matchesGetEvents, id) as Promise<MatchEvent[]>,
+    getHighlights: (ids) =>
+      ipcRenderer.invoke(IPC.matchesGetHighlights, ids) as Promise<Record<string, MatchHighlights>>,
     delete: (id) => ipcRenderer.invoke(IPC.matchesDelete, id) as Promise<void>,
   },
   vod: {

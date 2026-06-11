@@ -91,7 +91,7 @@ export function buildChapterLines(events: MatchEvent[], offsetSeconds: number): 
 // description so the upload still succeeds.
 export function buildDescription(events: MatchEvent[], offsetSeconds: number): BuiltDescription {
   const lines = buildChapterLines(events, offsetSeconds);
-  const footer = 'Recorded automatically with LoL VOD Review.';
+  const footer = 'Recorded automatically with Never Tilt Again.';
 
   if (lines.length < MIN_CHAPTERS) {
     return { description: footer, chapterCount: 0 };

@@ -1,3 +1,17 @@
+import {
+  Castle,
+  Crown,
+  Droplets,
+  Flag,
+  FlagOff,
+  Flame,
+  Play,
+  Shield,
+  Skull,
+  Sparkles,
+  Swords,
+  Zap,
+} from 'lucide-react';
 import type { MatchEvent } from '@shared/types';
 
 function fmtGameTime(secs: number): string {
@@ -7,7 +21,7 @@ function fmtGameTime(secs: number): string {
 }
 
 // Human label for an event row. Objective/kill events read off killer/victim.
-function describe(e: MatchEvent): string {
+export function describeEvent(e: MatchEvent): string {
   switch (e.eventType) {
     case 'ChampionKill':
       return `${e.killerName ?? 'Someone'} killed ${e.victimName ?? 'someone'}${
@@ -40,6 +54,21 @@ function describe(e: MatchEvent): string {
   }
 }
 
+const EVENT_ICON: Record<string, React.ReactNode> = {
+  ChampionKill: <Swords size={13} />,
+  FirstBlood: <Droplets size={13} />,
+  Multikill: <Zap size={13} />,
+  Ace: <Sparkles size={13} />,
+  TurretKilled: <Castle size={13} />,
+  InhibKilled: <Shield size={13} />,
+  DragonKill: <Flame size={13} />,
+  BaronKill: <Crown size={13} />,
+  HeraldKill: <Skull size={13} />,
+  AtakhanKill: <Skull size={13} />,
+  GameStart: <Flag size={13} />,
+  GameEnd: <FlagOff size={13} />,
+};
+
 export function EventTimeline({
   events,
   onSeek,
@@ -60,6 +89,20 @@ export function EventTimeline({
     );
   }
 
+  const Row = ({ e }: { e: MatchEvent }) => (
+    <>
+      <span className="w-12 shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-center font-mono text-[11px] tabular-nums text-primary-dim">
+        {fmtGameTime(e.eventTimeSeconds)}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-gray-300 group-hover:text-white">
+        {describeEvent(e)}
+      </span>
+      <span className="shrink-0 text-gray-600 group-hover:text-primary">
+        {EVENT_ICON[e.eventType] ?? <Play size={13} />}
+      </span>
+    </>
+  );
+
   return (
     <ul className="divide-y divide-edge">
       {events.map((e) =>
@@ -68,23 +111,14 @@ export function EventTimeline({
             <button
               type="button"
               onClick={() => onSeek(offsetSeconds + e.eventTimeSeconds)}
-              className="group flex w-full items-center gap-4 px-1 py-2 text-left text-sm hover:bg-panel/60"
+              className="group flex w-full items-center gap-3 rounded px-1 py-2 text-left text-sm transition hover:bg-white/5"
             >
-              <span className="w-12 shrink-0 font-mono text-gray-500 group-hover:text-blue-400">
-                {fmtGameTime(e.eventTimeSeconds)}
-              </span>
-              <span className="text-gray-300 group-hover:text-white">{describe(e)}</span>
-              <span className="ml-auto text-xs text-transparent group-hover:text-blue-400">
-                ▶ play
-              </span>
+              <Row e={e} />
             </button>
           </li>
         ) : (
-          <li key={e.id} className="flex items-center gap-4 px-1 py-2 text-sm">
-            <span className="w-12 shrink-0 font-mono text-gray-500">
-              {fmtGameTime(e.eventTimeSeconds)}
-            </span>
-            <span className="text-gray-300">{describe(e)}</span>
+          <li key={e.id} className="group flex items-center gap-3 px-1 py-2 text-sm">
+            <Row e={e} />
           </li>
         )
       )}

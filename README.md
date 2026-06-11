@@ -1,4 +1,4 @@
-# LoL VOD Review
+# Never Tilt Again
 
 A desktop app that automatically records your League of Legends games with OBS,
 parses the live match events into a KDA + objective timeline, and (optionally)
@@ -44,7 +44,7 @@ For day-to-day use you don't want a terminal — you want an installed app that 
 in the tray and records automatically. Build the installer once:
 
 ```bash
-npm run package:win   # outputs dist/LoL VOD Review Setup <version>.exe
+npm run package:win   # outputs dist/Never Tilt Again Setup <version>.exe
 ```
 
 Run that `Setup.exe`. It installs like any Windows program (Start Menu + desktop

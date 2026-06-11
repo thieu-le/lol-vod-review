@@ -1,3 +1,8 @@
+/* Self-hosted variable fonts (bundled by Vite — no external requests, CSP 'self'). */
+@import '@fontsource-variable/anybody';
+@import '@fontsource-variable/space-grotesk';
+@import '@fontsource-variable/inter';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,6 +15,60 @@ body,
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
-    sans-serif;
+  @apply bg-ink font-sans text-gray-200;
+}
+
+/* Thin dark scrollbars to match the command-center chrome. */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.14);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.24);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  /* Level-1 surface per the design system: translucent panel + blur + 1px border. */
+  .glass-card {
+    @apply rounded-xl border border-edge bg-panel/80 backdrop-blur-md;
+  }
+
+  .btn-primary {
+    @apply rounded-lg bg-primary px-4 py-2 font-label text-sm font-semibold uppercase tracking-wide text-ink transition hover:shadow-glow-primary disabled:opacity-40 disabled:hover:shadow-none;
+  }
+
+  .btn-ghost {
+    @apply rounded-lg border border-edge px-4 py-2 font-label text-sm uppercase tracking-wide text-gray-300 transition hover:border-primary/60 hover:text-white disabled:opacity-40;
+  }
+
+  .btn-gold {
+    @apply rounded-lg border border-gold/60 px-4 py-2 font-label text-sm uppercase tracking-wide text-gold-bright transition hover:bg-gold/10 disabled:opacity-40;
+  }
+
+  .btn-danger {
+    @apply rounded-lg bg-loss px-4 py-2 font-label text-sm font-semibold uppercase tracking-wide text-white transition hover:shadow-glow-loss disabled:opacity-40 disabled:hover:shadow-none;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-label text-[10px] font-semibold uppercase tracking-widest;
+  }
+
+  .input {
+    @apply rounded-lg border border-edge bg-raised px-3 py-1.5 text-sm text-white outline-none transition focus:border-primary focus:shadow-glow-primary;
+  }
+
+  .field-label {
+    @apply flex flex-col gap-1 font-label text-[11px] uppercase tracking-widest text-gray-500;
+  }
+
+  .card-title {
+    @apply font-label text-xs font-semibold uppercase tracking-widest text-gray-400;
+  }
 }

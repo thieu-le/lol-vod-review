@@ -110,6 +110,10 @@ export interface Match {
   kills: number;
   deaths: number;
   assists: number;
+  // Local player's identity strings (riotId / game name / summoner name) — used
+  // to attribute events like FirstBlood/Multikill to the player. Empty until
+  // observed live (or backfilled).
+  playerIdentities: string[];
   vodLocalPath: string | null;
   vodStatus: VodStatus;
   youtubeVideoId: string | null;
