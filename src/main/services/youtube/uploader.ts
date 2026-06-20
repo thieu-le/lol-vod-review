@@ -37,7 +37,13 @@ export async function uploadVideo(
           description: input.description.slice(0, 5000),
           categoryId: '20', // Gaming
         },
-        status: { privacyStatus: YOUTUBE_PRIVACY, selfDeclaredMadeForKids: false },
+        status: {
+          privacyStatus: YOUTUBE_PRIVACY,
+          selfDeclaredMadeForKids: false,
+          // Default anyway, but set explicitly so future uploads are embeddable
+          // once the API project is verified. (Does not affect existing videos.)
+          embeddable: true,
+        },
       },
       media: { body: createReadStream(input.filePath) },
     },
