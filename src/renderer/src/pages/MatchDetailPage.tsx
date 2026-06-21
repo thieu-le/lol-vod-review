@@ -204,7 +204,12 @@ export function MatchDetailPage({
         <div className="lg:col-span-2">
           {videoId && (
             <div className="flex flex-col gap-3">
-              <YoutubeEmbed videoId={videoId} seek={seek} />
+              <YoutubeEmbed
+                videoId={videoId}
+                seek={seek}
+                events={events}
+                offsetSeconds={offsetSeconds}
+              />
               <SeekerTimeline
                 events={events}
                 offsetSeconds={offsetSeconds}
