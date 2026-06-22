@@ -208,10 +208,12 @@ export function MatchDetailPage({
                 videoId={videoId}
                 seek={seek}
                 events={events}
+                identities={m.playerIdentities}
                 offsetSeconds={offsetSeconds}
               />
               <SeekerTimeline
                 events={events}
+                identities={m.playerIdentities}
                 offsetSeconds={offsetSeconds}
                 spanSeconds={recordingSpanSeconds}
                 onSeek={seekTo}

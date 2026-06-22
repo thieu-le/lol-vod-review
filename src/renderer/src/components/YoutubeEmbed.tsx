@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MatchEvent } from '@shared/types';
 import { describeEvent } from './EventTimeline';
+import { KAD_HEX, KAD_LABEL, personalMarkers } from '../lib/playerEvents';
 
 export interface SeekRequest {
   seconds: number;
@@ -87,11 +88,14 @@ export function YoutubeEmbed({
   videoId,
   seek,
   events,
+  identities,
   offsetSeconds,
 }: {
   videoId: string;
   seek: SeekRequest | null;
   events: MatchEvent[];
+  // Active player's identity strings — drives K/A/D attribution for the pips.
+  identities: string[];
   // Pre-game recording buffer added to each event's game time to get its
   // position within the recording (= the uploaded video's timeline).
   offsetSeconds: number;
@@ -105,15 +109,23 @@ export function YoutubeEmbed({
   const src = `https://www.youtube.com/watch?v=${videoId}`;
   const watchUrl = src;
 
-  const markers = useMemo(
-    () =>
-      events.map((e) => ({
-        t: offsetSeconds + e.eventTimeSeconds,
-        c: markerColorHex(e.eventType),
-        title: `${fmtClock(e.eventTimeSeconds)} · ${describeEvent(e)}`,
-      })),
-    [events, offsetSeconds]
-  );
+  // Prefer the player's own kills/assists/deaths; fall back to all game events
+  // by category when the player's identity isn't known (un-backfilled match).
+  const markers = useMemo(() => {
+    const personal = personalMarkers(events, identities, offsetSeconds);
+    if (personal.length > 0) {
+      return personal.map((p) => ({
+        t: p.recSeconds,
+        c: KAD_HEX[p.kind],
+        title: `${fmtClock(p.gameSeconds)} · ${KAD_LABEL[p.kind]}`,
+      }));
+    }
+    return events.map((e) => ({
+      t: offsetSeconds + e.eventTimeSeconds,
+      c: markerColorHex(e.eventType),
+      title: `${fmtClock(e.eventTimeSeconds)} · ${describeEvent(e)}`,
+    }));
+  }, [events, identities, offsetSeconds]);
 
   // Attach guest lifecycle listeners once per video. On dom-ready: trim chrome
   // and reveal the player. On a hard navigation failure: show the fallback.
