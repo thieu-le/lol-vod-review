@@ -1,5 +1,13 @@
 # Never Tilt Again
 
+[![Electron](https://img.shields.io/badge/Electron-47848F?logo=electron&logoColor=white)](https://www.electronjs.org)
+[![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org)
+[![OBS WebSocket v5](https://img.shields.io/badge/OBS-WebSocket%20v5-302E31?logo=obsstudio&logoColor=white)](https://github.com/obsproject/obs-websocket)
+[![Release](https://img.shields.io/github/v/release/thieu-le/lol-vod-review?label=release)](https://github.com/thieu-le/lol-vod-review/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 A desktop app that automatically records your League of Legends games with OBS,
 parses the live match events into a KDA + objective timeline, and (optionally)
 uploads each VOD to YouTube as **Unlisted** with clickable chapter timestamps,
