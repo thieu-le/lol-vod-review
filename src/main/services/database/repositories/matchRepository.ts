@@ -123,6 +123,7 @@ export interface MatchRepository {
   setRecordingError(id: string, message: string): void;
   attachVod(id: string, input: AttachVodInput): Match | null;
   findVodlessNear(startedAt: number, beforeMs: number, afterMs: number): Match | null;
+  findByInsightsVideo(insightsVideoUuid: string): Match | null;
   setVodStatus(id: string, status: VodStatus): void;
   setYoutube(id: string, input: SetYoutubeInput): void;
   markArchived(id: string, archivedAt: number, vodLocalPath: string | null): void;
@@ -217,8 +218,11 @@ class SqliteMatchRepository implements MatchRepository {
         `UPDATE matches SET
            ended_at = @ended_at,
            duration_seconds = @duration_seconds,
-           vod_local_path = @vod_local_path,
-           vod_status = @vod_status,
+           vod_local_path = COALESCE(@vod_local_path, vod_local_path),
+           -- Never move a match backwards out of uploading/uploaded/archived
+           -- (the Insights watcher may have attached and queued the VOD already).
+           vod_status = CASE WHEN vod_status IN ('recording', 'recorded', 'failed')
+                             THEN @vod_status ELSE vod_status END,
            result = COALESCE(@result, result),
            recording_error = COALESCE(@recording_error, recording_error),
            updated_at = @now
@@ -276,8 +280,9 @@ class SqliteMatchRepository implements MatchRepository {
     return this.get(id);
   }
 
-  // The live-tracked match (no VOD yet) whose detection time is closest to an
-  // Insights recording start, within [startedAt - beforeMs, startedAt + afterMs].
+  // The ended, live-tracked League match (no VOD yet) whose detection time is
+  // closest to an Insights recording start, within
+  // [startedAt - beforeMs, startedAt + afterMs].
   // Live Client detection fires at the loading screen, slightly before Insights
   // starts recording, so the window is asymmetric.
   findVodlessNear(startedAt: number, beforeMs: number, afterMs: number): Match | null {
@@ -286,7 +291,7 @@ class SqliteMatchRepository implements MatchRepository {
         `SELECT * FROM matches
          WHERE vod_local_path IS NULL
            AND game = 'lol'
-           AND vod_status IN ('recording', 'recorded')
+           AND vod_status = 'recorded'
            AND recording_started_at BETWEEN @lo AND @hi
          ORDER BY ABS(recording_started_at - @t) ASC
          LIMIT 1`
@@ -294,6 +299,13 @@ class SqliteMatchRepository implements MatchRepository {
       .get({ t: startedAt, lo: startedAt - beforeMs, hi: startedAt + afterMs }) as
       | MatchRow
       | undefined;
+    return row ? mapRow(row) : null;
+  }
+
+  findByInsightsVideo(insightsVideoUuid: string): Match | null {
+    const row = this.db
+      .prepare('SELECT * FROM matches WHERE insights_video_uuid = ? LIMIT 1')
+      .get(insightsVideoUuid) as MatchRow | undefined;
     return row ? mapRow(row) : null;
   }
 

@@ -23,6 +23,8 @@ export const config = {
     // If Insights' database never lists the file (DB unreadable, schema
     // changed), ingest anyway once it has been quiet this long.
     noDbQuietMs: 10 * 60_000,
+    // Same, when the database file exists but keeps failing to open/read.
+    unreadableDbQuietMs: 60 * 60_000,
     // Match a live-tracked League game to its recording: Live Client detection
     // (loading screen) happens before Insights starts recording.
     matchWindowBeforeMs: 10 * 60_000,

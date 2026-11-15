@@ -13,6 +13,8 @@ ALTER TABLE matches ADD COLUMN insights_video_uuid TEXT;
 -- API); their event times are on the video clock (vod_offset_seconds = 0).
 ALTER TABLE matches ADD COLUMN game TEXT NOT NULL DEFAULT 'lol';
 
+CREATE INDEX IF NOT EXISTS idx_matches_insights_video ON matches(insights_video_uuid);
+
 -- Every Insights file the watcher has handled, so each one is processed once.
 -- match_id is NULL for files that were skipped (pre-existing backlog seeded on
 -- first run, highlights/clips, non-ranked games in ranked-only mode). The file

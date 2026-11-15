@@ -13,7 +13,7 @@ import { createLogger } from '../../../lib/logger';
 const logger = createLogger('settings');
 
 const KEY_INSIGHTS = 'insights'; // { videoDir, dbPath }
-const KEY_INSIGHTS_SEEDED = 'insights.seeded'; // boolean: backlog already marked
+const KEY_INSIGHTS_SEEDED = 'insights.seededFolders'; // string[]: folders whose backlog is marked
 const KEY_RETENTION = 'retention'; // RetentionPolicy string
 const KEY_YT = 'youtube'; // { clientId }
 const KEY_YT_SECRET = 'youtube.secret.enc'; // encrypted OAuth client secret
@@ -39,8 +39,8 @@ export interface SettingsRepository {
   setRaw(key: string, value: unknown): void;
   getInsights(): InsightsSettings;
   setInsights(input: InsightsSettings): void;
-  getInsightsSeeded(): boolean;
-  setInsightsSeeded(seeded: boolean): void;
+  isInsightsFolderSeeded(folder: string): boolean;
+  markInsightsFolderSeeded(folder: string): void;
   getRetention(): RetentionPolicy;
   setRetention(policy: RetentionPolicy): void;
   getUploadMode(): UploadMode;
@@ -54,6 +54,11 @@ export interface SettingsRepository {
   hasYoutubeSecret(): boolean;
   getYoutubeRefreshToken(): string | null;
   setYoutubeRefreshToken(token: string | null): void;
+}
+
+function folderKey(folder: string): string {
+  const k = folder.replace(/[\\/]+$/, '');
+  return process.platform === 'win32' ? k.replace(/\//g, '\\').toLowerCase() : k;
 }
 
 class SqliteSettingsRepository implements SettingsRepository {
@@ -92,12 +97,17 @@ class SqliteSettingsRepository implements SettingsRepository {
     this.setRaw(KEY_INSIGHTS, { videoDir: input.videoDir.trim(), dbPath: input.dbPath.trim() });
   }
 
-  getInsightsSeeded(): boolean {
-    return this.getRaw(KEY_INSIGHTS_SEEDED) === true;
+  // Seeding is per folder: pointing the app at a different folder must not
+  // treat that folder's existing recordings as new uploads.
+  isInsightsFolderSeeded(folder: string): boolean {
+    const v = this.getRaw(KEY_INSIGHTS_SEEDED);
+    return Array.isArray(v) && v.includes(folderKey(folder));
   }
 
-  setInsightsSeeded(seeded: boolean): void {
-    this.setRaw(KEY_INSIGHTS_SEEDED, seeded);
+  markInsightsFolderSeeded(folder: string): void {
+    const v = this.getRaw(KEY_INSIGHTS_SEEDED);
+    const list = Array.isArray(v) ? (v as string[]) : [];
+    if (!list.includes(folderKey(folder))) this.setRaw(KEY_INSIGHTS_SEEDED, [...list, folderKey(folder)]);
   }
 
   getRetention(): RetentionPolicy {

@@ -8,7 +8,7 @@ import { eventRepository } from '../database/repositories/eventRepository';
 import { settingsRepository } from '../database/repositories/settingsRepository';
 import { uploadJobRepository } from '../database/repositories/uploadJobRepository';
 import { applyPostUpload } from '../files/retention';
-import { getAuthorizedClient } from './auth';
+import { getAuthStatus, getAuthorizedClient } from './auth';
 import { buildDescription } from './chapters';
 import { uploadVideo } from './uploader';
 
@@ -133,8 +133,16 @@ export class UploadController extends EventEmitter {
     return uploadJobRepository().getByMatch(matchId);
   }
 
+  // Drain the queue now, e.g. right after a YouTube account is connected.
+  resume(): void {
+    void this.pump();
+  }
+
   private async pump(): Promise<void> {
     if (this.processing || this.isPaused()) return;
+    // No account yet: leave jobs pending (not failed) so auto-queued uploads go
+    // out as soon as one is connected — see resume().
+    if (!getAuthStatus().connected) return;
     this.processing = true;
     try {
       let job = uploadJobRepository().nextPending();

@@ -105,15 +105,28 @@ export function readVideoLibraryLocation(db: SqlDb): string | null {
   }
 }
 
+// Lookup by full path first; if that misses (Insights stored the path with
+// forward slashes, a \\?\ prefix, a UNC path or another drive mapping), fall
+// back to the file name, which is unique because it is timestamped.
 export function findVideoByPath(db: SqlDb, filePath: string): InsightsVideo | null {
-  const row = db
+  const norm = (p: string) => p.replace(/\//g, '\\').replace(/^\\\\\?\\/, '').toLowerCase();
+  const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
+  type Row = { uuid: string; type: string; created_at: number; duration: number; file_path: string };
+  let row = db
     .prepare(
       `SELECT uuid, type, created_at, duration, file_path FROM video
-       WHERE lower(file_path) = lower(?) LIMIT 1`
+       WHERE lower(replace(file_path, '/', '\\')) = ? LIMIT 1`
     )
-    .get(filePath) as
-    | { uuid: string; type: string; created_at: number; duration: number; file_path: string }
-    | undefined;
+    .get(norm(filePath)) as Row | undefined;
+  if (!row) {
+    const candidates = db
+      .prepare(
+        `SELECT uuid, type, created_at, duration, file_path FROM video
+         WHERE lower(substr(replace(file_path, '/', '\\'), -?)) = ?`
+      )
+      .all(fileName.length + 1, ('\\' + fileName).toLowerCase()) as Row[];
+    if (candidates.length === 1) row = candidates[0];
+  }
   if (!row) return null;
   return {
     uuid: row.uuid,

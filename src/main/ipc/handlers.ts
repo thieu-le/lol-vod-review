@@ -141,6 +141,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   ipcMain.handle(IPC.youtubeConnect, async (): Promise<YoutubeConnectResult> => {
     try {
       const status = await youtubeConnect();
+      uploadController.resume(); // send anything queued while disconnected
       return { ok: true, status };
     } catch (err) {
       return { ok: false, error: toMessage(err), status: getAuthStatus() };
@@ -182,11 +183,11 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   recorderController.on('matchStarted', (match) => send(PUSH.matchStarted, match));
   recorderController.on('matchEnded', (match) => send(PUSH.matchEnded, match));
   // Every new Insights recording (League or Valorant) lands here once its file
-  // is finished; queue it for YouTube when auto-upload is on and an account is
-  // connected (an unconnected upload would just fail).
+  // is finished; queue it for YouTube when auto-upload is on. If no account is
+  // connected yet the job waits in the queue until one is.
   insightsWatcher.on('ingested', (match) => {
     send(PUSH.matchIngested, match);
-    if (getAuthStatus().connected) uploadController.enqueueIfAuto(match.id);
+    uploadController.enqueueIfAuto(match.id);
   });
 
   uploadController.on('progress', (p) => send(PUSH.uploadProgress, p));
