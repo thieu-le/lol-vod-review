@@ -3,11 +3,7 @@ import { IPC, PUSH } from '@shared/ipc-contract';
 import type {
   BackfillSummary,
   MatchHighlights,
-  ObsApplyResult,
-  ObsRecordingConfig,
-  ObsSettingsInput,
-  ObsSettingsView,
-  ObsTestResult,
+  InsightsSettingsView,
   RendererApi,
   UploadProgress,
   VodOpenResult,
@@ -17,9 +13,9 @@ import type {
   YoutubeStatus,
 } from '@shared/ipc-contract';
 import type {
+  InsightsSettings,
   Match,
   MatchEvent,
-  ObsNvencEncoder,
   RecorderStatus,
   RetentionPolicy,
   UploadJob,
@@ -52,18 +48,16 @@ const api: RendererApi = {
     onStatusChanged: (cb) => subscribe<RecorderStatus>(PUSH.recorderStatusChanged, cb),
     onMatchStarted: (cb) => subscribe<Match>(PUSH.matchStarted, cb),
     onMatchEnded: (cb) => subscribe<Match>(PUSH.matchEnded, cb),
+    onMatchIngested: (cb) => subscribe<Match>(PUSH.matchIngested, cb),
   },
-  obs: {
-    testConnection: () => ipcRenderer.invoke(IPC.obsTestConnection) as Promise<ObsTestResult>,
-    getRecordingConfig: () =>
-      ipcRenderer.invoke(IPC.obsGetRecordingConfig) as Promise<ObsRecordingConfig | null>,
-    applyRecommended: (encoder: ObsNvencEncoder) =>
-      ipcRenderer.invoke(IPC.obsApplyRecommended, encoder) as Promise<ObsApplyResult>,
+  insights: {
+    getSettings: () =>
+      ipcRenderer.invoke(IPC.settingsGetInsights) as Promise<InsightsSettingsView>,
+    setSettings: (input: InsightsSettings) =>
+      ipcRenderer.invoke(IPC.settingsSetInsights, input) as Promise<InsightsSettingsView>,
+    scanNow: () => ipcRenderer.invoke(IPC.insightsScanNow) as Promise<InsightsSettingsView>,
   },
   settings: {
-    getObs: () => ipcRenderer.invoke(IPC.settingsGetObs) as Promise<ObsSettingsView>,
-    setObs: (input: ObsSettingsInput) =>
-      ipcRenderer.invoke(IPC.settingsSetObs, input) as Promise<ObsSettingsView>,
     getRetention: () => ipcRenderer.invoke(IPC.settingsGetRetention) as Promise<RetentionPolicy>,
     setRetention: (policy: RetentionPolicy) =>
       ipcRenderer.invoke(IPC.settingsSetRetention, policy) as Promise<RetentionPolicy>,

@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useRecorder } from './hooks/useRecorder';
 import { Sidebar, type Tab } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
-import { ObsBanner } from './components/ObsBanner';
+import { InsightsBanner } from './components/InsightsBanner';
 import { UpdateBanner } from './components/UpdateBanner';
 import { MatchList } from './components/MatchList';
-import { ObsSettingsCard } from './components/ObsSettingsCard';
+import { InsightsSettingsCard } from './components/InsightsSettingsCard';
 import { RecordingSettingsCard } from './components/RecordingSettingsCard';
 import { YoutubeSettingsCard } from './components/YoutubeSettingsCard';
 import { MatchDetailPage } from './pages/MatchDetailPage';
@@ -27,7 +27,7 @@ export default function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar status={status} />
         <UpdateBanner />
-        <ObsBanner status={status} onOpenSettings={() => switchTab('settings')} />
+        <InsightsBanner status={status} onOpenSettings={() => switchTab('settings')} />
 
         <main className="flex-1 overflow-y-auto">
           {tab === 'matches' ? (
@@ -53,7 +53,7 @@ export default function App() {
                   Configure your capture pipeline, YouTube integration, and retention policies.
                 </p>
               </header>
-              <ObsSettingsCard />
+              <InsightsSettingsCard />
               <YoutubeSettingsCard />
               <RecordingSettingsCard />
             </div>

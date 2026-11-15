@@ -22,7 +22,17 @@ function fmtGameTime(secs: number): string {
 
 // Human label for an event row. Objective/kill events read off killer/victim.
 export function describeEvent(e: MatchEvent): string {
+  // Valorant personal events carry the kind (Insights reports the player's own
+  // kills/deaths/assists as counters, without names).
+  const kind = (e.payload as { Kind?: string } | null)?.Kind;
+  if (e.eventType === 'ChampionKill' && kind) {
+    return kind === 'kill' ? 'You got a kill' : kind === 'death' ? 'You died' : 'You got an assist';
+  }
   switch (e.eventType) {
+    case 'RoundStart': {
+      const p = (e.payload ?? {}) as { Round?: number; Side?: string | null };
+      return `Round ${p.Round ?? '?'}${p.Side ? ` · ${p.Side}` : ''}`;
+    }
     case 'ChampionKill':
       return `${e.killerName ?? 'Someone'} killed ${e.victimName ?? 'someone'}${
         e.assisters.length ? ` (+${e.assisters.length})` : ''
@@ -67,6 +77,7 @@ const EVENT_ICON: Record<string, React.ReactNode> = {
   AtakhanKill: <Skull size={13} />,
   GameStart: <Flag size={13} />,
   GameEnd: <FlagOff size={13} />,
+  RoundStart: <Flag size={13} />,
 };
 
 export function EventTimeline({
@@ -110,7 +121,7 @@ export function EventTimeline({
           <li key={e.id}>
             <button
               type="button"
-              onClick={() => onSeek(offsetSeconds + e.eventTimeSeconds)}
+              onClick={() => onSeek(Math.max(0, offsetSeconds + e.eventTimeSeconds))}
               className="group flex w-full items-center gap-3 rounded px-1 py-2 text-left text-sm transition hover:bg-white/5"
             >
               <Row e={e} />

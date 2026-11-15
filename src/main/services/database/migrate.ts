@@ -3,6 +3,7 @@ import { createLogger } from '../../lib/logger';
 import init001 from './migrations/001_init.sql?raw';
 import init002 from './migrations/002_match_events_event_id.sql?raw';
 import init003 from './migrations/003_matches_player_identities.sql?raw';
+import init004 from './migrations/004_insights_capture.sql?raw';
 
 const logger = createLogger('migrate');
 
@@ -11,6 +12,7 @@ const MIGRATIONS: { version: number; name: string; sql: string }[] = [
   { version: 1, name: '001_init', sql: init001 },
   { version: 2, name: '002_match_events_event_id', sql: init002 },
   { version: 3, name: '003_matches_player_identities', sql: init003 },
+  { version: 4, name: '004_insights_capture', sql: init004 },
 ];
 
 export function runMigrations(db: Database.Database): void {

@@ -64,6 +64,7 @@ export function youtubeThumbUrl(videoId: string): string {
 // fallback tile).
 export function matchThumbUrl(match: Match): string | null {
   if (match.youtubeVideoId) return youtubeThumbUrl(match.youtubeVideoId);
-  if (match.champion) return championSplashUrl(match.champion);
+  // Champion art is League-only; Valorant cards use the initial fallback.
+  if (match.champion && match.game === 'lol') return championSplashUrl(match.champion);
   return null;
 }

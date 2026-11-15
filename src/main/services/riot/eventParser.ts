@@ -22,6 +22,15 @@ export interface ParsedEvent {
   payload: LiveEvent; // verbatim raw event
 }
 
+// The fields KDA attribution reads; satisfied by both freshly parsed events and
+// stored MatchEvents (so KDA can be recomputed over everything persisted).
+export interface KdaEvent {
+  eventType: string;
+  killerName: string | null;
+  victimName: string | null;
+  assisters: string[];
+}
+
 export interface Kda {
   kills: number;
   deaths: number;
@@ -88,7 +97,7 @@ function isActivePlayer(name: string | null, identities: Set<string>): boolean {
 // Active-player KDA, computed solely from ChampionKill events to avoid
 // double-counting (Multikill/Ace/FirstBlood are derived signals, not kills).
 // A death also counts when the active player is the victim.
-export function computeKda(events: ParsedEvent[], identities: string[]): Kda {
+export function computeKda(events: KdaEvent[], identities: string[]): Kda {
   const ids = new Set(identities);
   let kills = 0;
   let deaths = 0;

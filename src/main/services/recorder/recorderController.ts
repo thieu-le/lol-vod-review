@@ -1,15 +1,9 @@
 import { EventEmitter } from 'node:events';
-import type {
-  Match,
-  MatchResult,
-  ObsConnectionState,
-  RecorderState,
-  RecorderStatus,
-} from '@shared/types';
+import type { Match, MatchResult, RecorderState, RecorderStatus } from '@shared/types';
 import { config } from '../../lib/config';
 import { createLogger } from '../../lib/logger';
 import { toMessage } from '../../lib/errors';
-import { obsClient } from '../obs/obsClient';
+import { insightsWatcher } from '../insights/insightsWatcher';
 import { riotLiveClient, resolveActiveChampion } from '../riot/liveClient';
 import type { LiveAllGameData } from '../riot/liveClient';
 import { lcuClient } from '../riot/lcuClient';
@@ -22,7 +16,10 @@ import { decideTransition } from './matchStateMachine';
 
 const logger = createLogger('recorder');
 
-// Orchestrates: poll Riot -> drive OBS record start/stop -> persist match rows.
+// Tracks League games live: poll Riot's Live Client -> persist match rows and
+// the event stream. Recording itself is done by Insights Capture; its video is
+// attached to the match afterwards by the Insights watcher, which also uses the
+// data captured here as a backup when Insights recorded no game data.
 // Emits 'status' (RecorderStatus), 'matchStarted' (Match), 'matchEnded' (Match).
 export class RecorderController extends EventEmitter {
   private state: RecorderState = 'idle';
@@ -36,9 +33,9 @@ export class RecorderController extends EventEmitter {
   private ignoringGame = false;
 
   start(): void {
-    // Keep OBS connected and start polling Riot.
-    void obsClient.start();
-    obsClient.on('stateChanged', () => this.emitStatus());
+    insightsWatcher.on('status', () => this.emitStatus());
+    // Don't fall back to ingesting an unregistered file while a game is live.
+    insightsWatcher.start({ isGameInProgress: () => this.state !== 'idle' });
     this.scheduleTick(0);
     logger.info('RecorderController started');
   }
@@ -46,13 +43,13 @@ export class RecorderController extends EventEmitter {
   stop(): void {
     if (this.pollTimer) clearTimeout(this.pollTimer);
     this.pollTimer = null;
-    void obsClient.stop();
+    insightsWatcher.stop();
   }
 
   getStatus(): RecorderStatus {
     return {
       state: this.state,
-      obs: obsClient.getState() as ObsConnectionState,
+      insights: insightsWatcher.getStatus(),
       currentMatchId: this.currentMatchId,
       lastError: this.lastError,
     };
@@ -156,19 +153,6 @@ export class RecorderController extends EventEmitter {
     this.lastError = null;
     logger.info('Match started', match.id);
 
-    // Drive OBS. If OBS is down, keep the metadata row and flag the error.
-    try {
-      if (obsClient.isConnected()) {
-        await obsClient.startRecording();
-      } else {
-        matchRepository().setRecordingError(match.id, 'OBS not connected at game start');
-        logger.warn('OBS not connected; recording not started');
-      }
-    } catch (err) {
-      matchRepository().setRecordingError(match.id, toMessage(err));
-      logger.error('startRecording failed', err);
-    }
-
     this.emit('matchStarted', matchRepository().get(match.id));
     this.emitStatus();
   }
@@ -190,26 +174,17 @@ export class RecorderController extends EventEmitter {
         ? Math.round((endedAt - existing.recordingStartedAt) / 1000)
         : null;
 
-    let vodLocalPath: string | null = null;
-    let recordingError: string | null = null;
-    try {
-      if (obsClient.isConnected() && (await obsClient.isRecording())) {
-        vodLocalPath = await obsClient.stopRecording();
-      }
-    } catch (err) {
-      recordingError = toMessage(err);
-      logger.error('stopRecording failed', err);
-    }
-
+    // The VOD arrives later: the Insights watcher attaches it once Insights has
+    // finished writing the file.
     const finalized = matchRepository().finalize(matchId, {
       endedAt,
       durationSeconds,
-      vodLocalPath,
+      vodLocalPath: existing?.vodLocalPath ?? null,
       vodStatus: 'recorded',
-      recordingError,
     });
 
-    logger.info('Match ended', matchId, 'vod:', vodLocalPath ?? '(none)');
+    logger.info('Match ended', matchId, '(waiting for Insights recording)');
+    insightsWatcher.scanNow();
     this.currentMatchId = null;
     this.state = 'idle';
     this.consecutiveFailures = 0;

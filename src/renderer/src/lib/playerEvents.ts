@@ -55,7 +55,7 @@ export function personalMarkers(
     out.push({
       id: e.id,
       kind,
-      recSeconds: offsetSeconds + e.eventTimeSeconds,
+      recSeconds: Math.max(0, offsetSeconds + e.eventTimeSeconds),
       gameSeconds: e.eventTimeSeconds,
     });
   }

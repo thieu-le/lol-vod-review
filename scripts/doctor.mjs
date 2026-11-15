@@ -4,7 +4,7 @@
 // WARN / FAIL / INFO with a remediation hint for anything that isn't ready.
 //
 // Usage:  node scripts/doctor.mjs        (or: npm run doctor)
-//         OBS_PORT=4456 npm run doctor    (override the OBS WebSocket port)
+//         INSIGHTS_DB=D:\\path\\db.sqlite3 npm run doctor   (non-default Insights install)
 
 import net from 'node:net';
 import https from 'node:https';
@@ -13,8 +13,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OBS_HOST = process.env.OBS_HOST ?? '127.0.0.1';
-const OBS_PORT = Number(process.env.OBS_PORT ?? 4455);
+const INSIGHTS_DB =
+  process.env.INSIGHTS_DB ??
+  (process.env.APPDATA ? join(process.env.APPDATA, 'Insights Capture', 'db.sqlite3') : null);
 const LIVE_CLIENT = 'https://127.0.0.1:2999/liveclientdata/gamestats';
 const MIN_NODE_MAJOR = 18;
 
@@ -114,16 +115,15 @@ async function main() {
     report('INFO', 'Build output', 'not built yet', 'For dev use `npm run dev`; to package run `npm run build`');
   }
 
-  // 6. OBS WebSocket reachable
-  const obs = await tcpProbe(OBS_HOST, OBS_PORT);
-  if (obs === 'open') {
-    report('PASS', 'OBS WebSocket', `listening on ${OBS_HOST}:${OBS_PORT}`);
+  // 6. Insights Capture installed (it does the recording)
+  if (INSIGHTS_DB && existsSync(INSIGHTS_DB)) {
+    report('PASS', 'Insights Capture', `database found at ${INSIGHTS_DB}`);
   } else {
     report(
       'WARN',
-      'OBS WebSocket',
-      `${OBS_HOST}:${OBS_PORT} ${obs}`,
-      'Open OBS → Tools → WebSocket Server Settings → Enable. Recording needs this. (Set OBS_PORT if you changed it.)',
+      'Insights Capture',
+      INSIGHTS_DB ? `no database at ${INSIGHTS_DB}` : 'APPDATA not set',
+      'Install Insights Capture and record one game, or set INSIGHTS_DB. Recordings come from Insights; without its database, League chapters fall back to live data and Valorant gets none.',
     );
   }
 
@@ -145,7 +145,7 @@ async function main() {
         ? '  ~/Library/Application Support/lol-vod-review'
         : '  ~/.config/lol-vod-review',
   );
-  console.log('Recordings are written wherever OBS is configured to record; the app reads that path back from OBS.\n');
+  console.log("Recordings come from Insights Capture's video folder (Insights → Settings → Capture).\n");
 
   if (fails > 0) {
     console.log(`Result: ${fails} blocking issue(s)${warns ? `, ${warns} warning(s)` : ''}. Fix the FAIL items above.\n`);

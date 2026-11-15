@@ -14,6 +14,7 @@ import { EventTimeline } from '../components/EventTimeline';
 import { SeekerTimeline } from '../components/SeekerTimeline';
 import { YoutubeEmbed, type SeekRequest } from '../components/YoutubeEmbed';
 import { championLoadingUrl } from '../lib/championArt';
+import { vodOffsetSeconds, vodSpanSeconds } from '@shared/vodTiming';
 
 function fmtDuration(secs: number | null): string {
   if (!secs || secs <= 0) return '—';
@@ -142,15 +143,11 @@ export function MatchDetailPage({
   const m: Match = match;
   const hasVod = Boolean(m.vodLocalPath);
   const videoId = m.youtubeVideoId;
-  // Pre-game recording buffer: how far into the recording the game actually
-  // started. Added to each event's game time to get its position in the VOD.
-  const offsetSeconds = m.gameStartedAt
-    ? Math.max(0, Math.round((m.gameStartedAt - m.recordingStartedAt) / 1000))
-    : 0;
+  // Added to each event's time to get its position in the VOD (exact for
+  // Insights recordings; the pre-game buffer for older OBS recordings).
+  const offsetSeconds = vodOffsetSeconds(m);
   // Total recording length, for placing markers along the seeker.
-  const recordingSpanSeconds = m.endedAt
-    ? Math.max(1, Math.round((m.endedAt - m.recordingStartedAt) / 1000))
-    : offsetSeconds + (m.durationSeconds ?? 0);
+  const recordingSpanSeconds = vodSpanSeconds(m);
 
   function seekTo(seconds: number) {
     setSeek((p) => ({ seconds, nonce: (p?.nonce ?? 0) + 1 }));
@@ -167,7 +164,7 @@ export function MatchDetailPage({
 
       {/* Header band: identity on the left, stat columns on the right. */}
       <header className="glass-card mt-4 flex flex-wrap items-center gap-5 px-5 py-4">
-        <ChampionPortrait champion={m.champion} />
+        <ChampionPortrait champion={m.game === 'lol' ? m.champion : null} />
         <div className="min-w-0">
           <div className="flex items-center gap-3">
             <h1 className="truncate font-heading text-2xl font-extrabold uppercase tracking-tight text-white">

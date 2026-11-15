@@ -4,46 +4,48 @@
 [![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org)
-[![OBS WebSocket v5](https://img.shields.io/badge/OBS-WebSocket%20v5-302E31?logo=obsstudio&logoColor=white)](https://github.com/obsproject/obs-websocket)
 [![Release](https://img.shields.io/github/v/release/thieu-le/lol-vod-review?label=release)](https://github.com/thieu-le/lol-vod-review/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A desktop app that automatically records your League of Legends games with OBS,
-parses the live match events into a KDA + objective timeline, and (optionally)
-uploads each VOD to YouTube as **Unlisted** with clickable chapter timestamps,
-then lets you watch it back in-app — the local file can be deleted, the YouTube
-copy streams in an embedded player you can jump around by clicking timeline events.
+An add-on for [Insights Capture](https://insights.gg). Insights records your
+League of Legends and VALORANT games; this app picks up every new full-match
+recording, builds a KDA + objective (League) or round-by-round (VALORANT)
+timeline for it, and uploads it to YouTube as **Unlisted** with clickable
+chapter timestamps. You can watch it back in-app: the local file can be
+deleted, and the YouTube copy streams in an embedded player you can jump around
+by clicking timeline events.
 
-> Play a game → it auto-records → the match shows up in history with champion,
-> result, KDA, and objective timestamps → one click uploads the VOD to YouTube
-> with chapters → the local file is archived and cleaned up on a safe schedule.
+> Play a game → Insights records it → the match shows up in history with
+> champion/agent, result, KDA and timestamps → it's queued for YouTube with
+> chapters → the local file is archived and cleaned up on a safe schedule.
 > Zero manual input during a game.
 
-Built with Electron + React + TypeScript (electron-vite), better-sqlite3,
-obs-websocket-js (v5), and the Riot Live Client API.
+Built with Electron + React + TypeScript (electron-vite), better-sqlite3, the
+Riot Live Client API, and Insights Capture's local database (read-only).
 
 ---
 
 ## Prerequisites
 
 - **Node.js 18+** and npm.
-- **OBS Studio 28+** (ships with the WebSocket v5 server built in).
-- **League of Legends** — match detection uses the in-client Live Client API on
-  `https://127.0.0.1:2999`, available only while you are in an active game.
+- **Insights Capture** (Windows), set to record full matches for League of
+  Legends and/or VALORANT. Its Capture mode must produce full-match files
+  (`League of Legends - <date>.mp4`, `VALORANT - <date>.mp4`), not only highlights.
+- **League of Legends** (optional backup data) — during League games the app
+  also polls the in-client Live Client API on `https://127.0.0.1:2999`.
 - A native toolchain for building `better-sqlite3` (Xcode CLT on macOS, or
   Visual Studio Build Tools / "Desktop development with C++" on Windows).
 
 ## Quick start (Windows)
 
-1. Install [Node.js 18+](https://nodejs.org) and [OBS Studio 28+](https://obsproject.com).
+1. Install [Node.js 18+](https://nodejs.org) and [Insights Capture](https://insights.gg).
 2. Double-click **`setup-windows.bat`** in the project folder. It installs
    dependencies, rebuilds the native module, and runs the environment check.
-3. In OBS: **Tools → WebSocket Server Settings → Enable** (port `4455`), and make
-   sure OBS is set to **Record** (not just stream).
-4. Run `npm run dev`.
+3. Run `npm run dev`. The app finds Insights' video folder and database on its
+   own; override either in **Settings → Insights Capture**.
 
-If anything looks off at any point, run **`npm run doctor`** — it checks Node,
-the native module, OBS reachability, and League's Live Client, and tells you how
+If anything looks off at any point, run **`npm run doctor`**. It checks Node,
+the native module, Insights Capture, and League's Live Client, and tells you how
 to fix whatever isn't ready.
 
 ## Install as a background app (Windows)
@@ -102,7 +104,7 @@ publishes the Release; installed apps pick it up automatically.
 
 ```bash
 npm install        # postinstall runs electron-builder install-app-deps
-npm run doctor     # preflight: verify Node, native module, OBS, Live Client
+npm run doctor     # preflight: verify Node, native module, Insights, Live Client
 npm run dev        # launch the app in development
 ```
 
@@ -118,19 +120,28 @@ npm run rebuild    # electron-builder install-app-deps
 > If `better-sqlite3` fails to load, install "Desktop development with C++" from
 > the Visual Studio Installer, then `npm run rebuild`.
 
-## Enabling OBS WebSocket
+## Insights Capture
 
-The app drives OBS over its WebSocket v5 server. In OBS:
+Insights does the recording. The app watches Insights' video folder (by
+default whatever Insights has under **Settings → Capture**, e.g.
+`T:\Videos\Insights`) and, for each new **full-match** recording:
 
-1. **Tools → WebSocket Server Settings**.
-2. Check **Enable WebSocket server** (default port `4455`).
-3. Optionally set a password (recommended).
-4. Click **Apply**.
+- **League of Legends** — reads the game's Riot Live Client data that Insights
+  stored (every event, players, queue, Riot game id) and merges it with what
+  this app captured live, deduped by Riot's event id. The chapter offset is
+  measured exactly by pairing your kills/deaths/assists on the game clock with
+  Insights' markers for the same moments on the video clock.
+- **VALORANT** — reads rounds, your kills/deaths/assists, agent, map, mode,
+  final score and result from Insights' data. Chapters are per round.
 
-Then in the app's **Settings** tab, enter the host/port/password and hit **Test
-Connection**. The status bar shows OBS as connected; an in-app banner appears
-whenever it isn't. The password is encrypted at rest via Electron `safeStorage`
-and is never logged.
+Highlights, clips and other games in the folder are ignored. Recordings that
+were already in the folder the first time the app ran are marked as seen and
+never uploaded, so turning this on doesn't flood YouTube with a backlog.
+
+Insights' database (`%APPDATA%\Insights Capture\db.sqlite3`) is opened
+**read-only**, briefly, and never written. Its schema is private to Insights
+and may change; if it can't be read, League games still get chapters from the
+app's own live capture.
 
 ## YouTube upload (optional)
 
@@ -150,9 +161,9 @@ be embedded without the viewer signing into your Google account.)
    `safeStorage` and is never logged.
 
 Manual mode uploads from a match's detail page; automatic mode enqueues an
-upload when each game finishes. Chapter timestamps are derived from the parsed
-match events and aligned to recording-relative time using the stored
-recording/game-start offset.
+upload as soon as each new Insights recording has been imported. Chapter
+timestamps are derived from the match events and aligned to the video using the
+offset measured at import.
 
 Once a match is uploaded, its detail page embeds a YouTube player and clicking
 any timeline event seeks the video to that exact moment (using the same offset).
@@ -166,7 +177,8 @@ After a successful upload the local recording is handled per the **retention
 policy** in Settings:
 
 - **Archive then delete after 30 days** (default) — moves the file to an archive
-  folder and deletes it only once it has aged out. A recording is **never**
+  folder and deletes it only once it has aged out. Moving or deleting a file
+  leaves a dead entry in Insights' own library; that's expected. A recording is **never**
   deleted without a confirmed YouTube video ID, so a failed post-upload step
   can't lose your VOD.
 - **Delete after upload** — removes the local file once the upload succeeds.
@@ -177,7 +189,7 @@ policy** in Settings:
 | Script | Purpose |
 |---|---|
 | `npm run dev` | Run the app in development (electron-vite). |
-| `npm run doctor` | Environment preflight (Node, native module, OBS, Live Client). |
+| `npm run doctor` | Environment preflight (Node, native module, Insights, Live Client). |
 | `npm run build` | Type-check-free production build of all three processes. |
 | `npm run typecheck` | Type-check the node (main/preload) and web (renderer) projects. |
 | `npm start` | Preview a production build. |
@@ -188,8 +200,11 @@ policy** in Settings:
 
 ## How it works
 
-- **Detection + recording** — a controller polls the Riot Live Client API to
-  detect game start/end and drives OBS record start/stop, persisting a match row.
+- **Recording** — Insights Capture. A watcher polls its video folder; a file is
+  imported once it has stopped changing and Insights has registered it.
+- **Live tracking (League)** — a controller polls the Riot Live Client API to
+  detect game start/end and capture events, persisting a match row that the
+  Insights recording is later attached to.
 - **Event parsing** — raw live events are captured verbatim, then parsed into
   structured `match_events` (kills, dragons, barons, heralds, towers, …) and the
   active player's KDA, deterministically (re-parsable from stored snapshots).
@@ -205,5 +220,5 @@ policy** in Settings:
   browser.
 - The Live Client TLS bypass is scoped to `127.0.0.1:2999` only — never global.
 - All IPC inputs are validated with zod.
-- Secrets (OBS password, YouTube client secret + refresh token) are encrypted
+- Secrets (YouTube client secret + refresh token) are encrypted
   via `safeStorage` and never logged. Never commit `.env`.

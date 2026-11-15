@@ -1,7 +1,7 @@
 import type { RecorderState } from '@shared/types';
 
 // Pure transition logic for the match lifecycle. No side effects — the
-// controller maps these actions onto OBS/DB operations. Keeping it pure makes
+// controller maps these actions onto DB operations. Keeping it pure makes
 // the debounce + edge behavior trivially testable.
 
 export type RecorderAction = 'none' | 'startMatch' | 'endMatch';

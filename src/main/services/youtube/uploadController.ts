@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import type { Match, UploadJob } from '@shared/types';
+import { vodOffsetSeconds } from '@shared/vodTiming';
 import { createLogger } from '../../lib/logger';
 import { toMessage } from '../../lib/errors';
 import { matchRepository } from '../database/repositories/matchRepository';
@@ -14,13 +15,16 @@ import { uploadVideo } from './uploader';
 const logger = createLogger('upload');
 
 // "Champion KDA Result - Date", e.g. "Ahri 8/2/10 Win - 6/5/2026".
+// Valorant adds the map: "Neon 14/22/6 Win - Sunset - 10/18/2026".
 // Result is omitted while unknown; KDA reflects the recomputed match totals.
 function buildTitle(match: Match): string {
-  const champ = match.champion ?? 'League of Legends';
+  const fallback = match.game === 'valorant' ? 'VALORANT' : 'League of Legends';
+  const who = match.champion ?? fallback;
   const kda = `${match.kills}/${match.deaths}/${match.assists}`;
   const result = match.result !== 'Unknown' ? ` ${match.result}` : '';
+  const map = match.game === 'valorant' && match.mapName ? ` - ${match.mapName}` : '';
   const date = new Date(match.recordingStartedAt).toLocaleDateString();
-  return `${champ} ${kda}${result} - ${date}`;
+  return `${who} ${kda}${result}${map} - ${date}`;
 }
 
 // YouTube Data API quota errors (HTTP 403). When the daily quota or per-user
@@ -66,12 +70,6 @@ function nextPacificMidnightMs(now = Date.now()): number {
   const secsIntoDay = hour * 3600 + get('minute') * 60 + get('second');
   const secsUntilMidnight = 24 * 3600 - secsIntoDay;
   return now + secsUntilMidnight * 1000;
-}
-
-// In-game seconds -> recording-relative seconds for chapter alignment.
-function recordingOffsetSeconds(match: Match): number {
-  if (!match.gameStartedAt) return 0;
-  return Math.max(0, Math.round((match.gameStartedAt - match.recordingStartedAt) / 1000));
 }
 
 // Serial upload queue. Drains pending upload_jobs one at a time so a large
@@ -172,7 +170,7 @@ export class UploadController extends EventEmitter {
       this.emit('changed');
 
       const events = eventRepository().listForMatch(match.id);
-      const { description } = buildDescription(events, recordingOffsetSeconds(match));
+      const { description } = buildDescription(events, vodOffsetSeconds(match), match.game);
 
       const result = await uploadVideo(
         auth,
