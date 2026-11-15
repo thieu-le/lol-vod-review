@@ -1,9 +1,6 @@
 // Typed application error so services never surface raw/unknown throwables.
 
 export type AppErrorCode =
-  | 'OBS_CONNECT_FAILED'
-  | 'OBS_REQUEST_FAILED'
-  | 'OBS_NOT_CONNECTED'
   | 'RIOT_UNAVAILABLE'
   | 'DB_ERROR'
   | 'VALIDATION_ERROR'

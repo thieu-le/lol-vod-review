@@ -1,11 +1,12 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
-import type { Match, MatchResult, VodStatus } from '@shared/types';
+import type { Game, Match, MatchResult, VodStatus } from '@shared/types';
 import { getDb } from '../db';
 
 // Raw row shape as stored in SQLite (snake_case).
 interface MatchRow {
   id: string;
+  game: string;
   riot_game_id: number | null;
   champion: string | null;
   game_mode: string | null;
@@ -21,6 +22,9 @@ interface MatchRow {
   assists: number;
   player_identities: string | null;
   vod_local_path: string | null;
+  vod_offset_seconds: number | null;
+  vod_duration_seconds: number | null;
+  insights_video_uuid: string | null;
   vod_status: string;
   youtube_video_id: string | null;
   youtube_url: string | null;
@@ -33,6 +37,7 @@ interface MatchRow {
 function mapRow(r: MatchRow): Match {
   return {
     id: r.id,
+    game: r.game === 'valorant' ? 'valorant' : 'lol',
     riotGameId: r.riot_game_id,
     champion: r.champion,
     gameMode: r.game_mode,
@@ -48,6 +53,9 @@ function mapRow(r: MatchRow): Match {
     assists: r.assists,
     playerIdentities: r.player_identities ? (JSON.parse(r.player_identities) as string[]) : [],
     vodLocalPath: r.vod_local_path,
+    vodOffsetSeconds: r.vod_offset_seconds,
+    vodDurationSeconds: r.vod_duration_seconds,
+    insightsVideoUuid: r.insights_video_uuid,
     vodStatus: r.vod_status as VodStatus,
     youtubeVideoId: r.youtube_video_id,
     youtubeUrl: r.youtube_url,
@@ -60,6 +68,7 @@ function mapRow(r: MatchRow): Match {
 
 export interface CreateMatchInput {
   recordingStartedAt: number;
+  game?: Game;
   vodStatus?: VodStatus;
   recordingError?: string | null;
 }
@@ -69,6 +78,18 @@ export interface MatchMetaInput {
   gameMode?: string | null;
   mapName?: string | null;
   queueId?: number | null;
+  riotGameId?: number | null;
+}
+
+// Links a finished Insights recording to a match row.
+export interface AttachVodInput {
+  vodLocalPath: string;
+  vodOffsetSeconds: number | null;
+  vodDurationSeconds: number | null;
+  insightsVideoUuid: string | null;
+  endedAt: number | null;
+  durationSeconds: number | null;
+  result?: MatchResult;
 }
 
 export interface FinalizeMatchInput {
@@ -100,6 +121,9 @@ export interface MatchRepository {
   setPlayerIdentities(id: string, identities: string[]): void;
   finalize(id: string, input: FinalizeMatchInput): Match | null;
   setRecordingError(id: string, message: string): void;
+  attachVod(id: string, input: AttachVodInput): Match | null;
+  findVodlessNear(startedAt: number, beforeMs: number, afterMs: number): Match | null;
+  findByInsightsVideo(insightsVideoUuid: string): Match | null;
   setVodStatus(id: string, status: VodStatus): void;
   setYoutube(id: string, input: SetYoutubeInput): void;
   markArchived(id: string, archivedAt: number, vodLocalPath: string | null): void;
@@ -118,11 +142,12 @@ class SqliteMatchRepository implements MatchRepository {
     this.db
       .prepare(
         `INSERT INTO matches
-           (id, recording_started_at, vod_status, recording_error, result, created_at, updated_at)
-         VALUES (@id, @recording_started_at, @vod_status, @recording_error, 'Unknown', @now, @now)`
+           (id, game, recording_started_at, vod_status, recording_error, result, created_at, updated_at)
+         VALUES (@id, @game, @recording_started_at, @vod_status, @recording_error, 'Unknown', @now, @now)`
       )
       .run({
         id,
+        game: input.game ?? 'lol',
         recording_started_at: input.recordingStartedAt,
         vod_status: input.vodStatus ?? 'recording',
         recording_error: input.recordingError ?? null,
@@ -148,6 +173,7 @@ class SqliteMatchRepository implements MatchRepository {
            game_mode = COALESCE(game_mode, @game_mode),
            map_name = COALESCE(map_name, @map_name),
            queue_id = COALESCE(queue_id, @queue_id),
+           riot_game_id = COALESCE(riot_game_id, @riot_game_id),
            updated_at = @now
          WHERE id = @id`
       )
@@ -157,6 +183,7 @@ class SqliteMatchRepository implements MatchRepository {
         game_mode: meta.gameMode ?? null,
         map_name: meta.mapName ?? null,
         queue_id: meta.queueId ?? null,
+        riot_game_id: meta.riotGameId ?? null,
         now: Date.now(),
       });
   }
@@ -191,8 +218,11 @@ class SqliteMatchRepository implements MatchRepository {
         `UPDATE matches SET
            ended_at = @ended_at,
            duration_seconds = @duration_seconds,
-           vod_local_path = @vod_local_path,
-           vod_status = @vod_status,
+           vod_local_path = COALESCE(@vod_local_path, vod_local_path),
+           -- Never move a match backwards out of uploading/uploaded/archived
+           -- (the Insights watcher may have attached and queued the VOD already).
+           vod_status = CASE WHEN vod_status IN ('recording', 'recorded', 'failed')
+                             THEN @vod_status ELSE vod_status END,
            result = COALESCE(@result, result),
            recording_error = COALESCE(@recording_error, recording_error),
            updated_at = @now
@@ -215,6 +245,68 @@ class SqliteMatchRepository implements MatchRepository {
     this.db
       .prepare('UPDATE matches SET recording_error = ?, updated_at = ? WHERE id = ?')
       .run(message, Date.now(), id);
+  }
+
+  // Attaches the VOD file and its exact timing. Only moves vod_status forward
+  // from the pre-VOD states, so a re-ingest can never undo an upload.
+  attachVod(id: string, input: AttachVodInput): Match | null {
+    this.db
+      .prepare(
+        `UPDATE matches SET
+           vod_local_path = @vod_local_path,
+           vod_offset_seconds = @vod_offset_seconds,
+           vod_duration_seconds = @vod_duration_seconds,
+           insights_video_uuid = @insights_video_uuid,
+           ended_at = COALESCE(ended_at, @ended_at),
+           duration_seconds = COALESCE(duration_seconds, @duration_seconds),
+           result = CASE WHEN result = 'Unknown' AND @result IS NOT NULL THEN @result ELSE result END,
+           recording_error = NULL,
+           vod_status = CASE WHEN vod_status IN ('recording', 'recorded', 'failed')
+                             THEN 'recorded' ELSE vod_status END,
+           updated_at = @now
+         WHERE id = @id`
+      )
+      .run({
+        id,
+        vod_local_path: input.vodLocalPath,
+        vod_offset_seconds: input.vodOffsetSeconds,
+        vod_duration_seconds: input.vodDurationSeconds,
+        insights_video_uuid: input.insightsVideoUuid,
+        ended_at: input.endedAt,
+        duration_seconds: input.durationSeconds,
+        result: input.result ?? null,
+        now: Date.now(),
+      });
+    return this.get(id);
+  }
+
+  // The ended, live-tracked League match (no VOD yet) whose detection time is
+  // closest to an Insights recording start, within
+  // [startedAt - beforeMs, startedAt + afterMs].
+  // Live Client detection fires at the loading screen, slightly before Insights
+  // starts recording, so the window is asymmetric.
+  findVodlessNear(startedAt: number, beforeMs: number, afterMs: number): Match | null {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM matches
+         WHERE vod_local_path IS NULL
+           AND game = 'lol'
+           AND vod_status = 'recorded'
+           AND recording_started_at BETWEEN @lo AND @hi
+         ORDER BY ABS(recording_started_at - @t) ASC
+         LIMIT 1`
+      )
+      .get({ t: startedAt, lo: startedAt - beforeMs, hi: startedAt + afterMs }) as
+      | MatchRow
+      | undefined;
+    return row ? mapRow(row) : null;
+  }
+
+  findByInsightsVideo(insightsVideoUuid: string): Match | null {
+    const row = this.db
+      .prepare('SELECT * FROM matches WHERE insights_video_uuid = ? LIMIT 1')
+      .get(insightsVideoUuid) as MatchRow | undefined;
+    return row ? mapRow(row) : null;
   }
 
   setVodStatus(id: string, status: VodStatus): void {

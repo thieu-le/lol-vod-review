@@ -1,8 +1,7 @@
 import type Database from 'better-sqlite3';
 import { safeStorage } from 'electron';
-import type { ObsSettings, RetentionPolicy, UploadMode } from '@shared/types';
+import type { InsightsSettings, RetentionPolicy, UploadMode } from '@shared/types';
 import {
-  DEFAULT_OBS_SETTINGS,
   DEFAULT_RETENTION_POLICY,
   DEFAULT_UPLOAD_MODE,
   RETENTION_POLICY,
@@ -13,8 +12,8 @@ import { createLogger } from '../../../lib/logger';
 
 const logger = createLogger('settings');
 
-const KEY_OBS = 'obs'; // { host, port }
-const KEY_OBS_PASSWORD = 'obs.password.enc'; // base64 of safeStorage-encrypted blob
+const KEY_INSIGHTS = 'insights'; // { videoDir, dbPath }
+const KEY_INSIGHTS_SEEDED = 'insights.seededFolders'; // string[]: folders whose backlog is marked
 const KEY_RETENTION = 'retention'; // RetentionPolicy string
 const KEY_YT = 'youtube'; // { clientId }
 const KEY_YT_SECRET = 'youtube.secret.enc'; // encrypted OAuth client secret
@@ -38,9 +37,10 @@ export interface YoutubeConfig {
 export interface SettingsRepository {
   getRaw(key: string): unknown | null;
   setRaw(key: string, value: unknown): void;
-  getObs(): ObsSettings;
-  setObs(input: { host: string; port: number; password?: string }): void;
-  hasObsPassword(): boolean;
+  getInsights(): InsightsSettings;
+  setInsights(input: InsightsSettings): void;
+  isInsightsFolderSeeded(folder: string): boolean;
+  markInsightsFolderSeeded(folder: string): void;
   getRetention(): RetentionPolicy;
   setRetention(policy: RetentionPolicy): void;
   getUploadMode(): UploadMode;
@@ -54,6 +54,11 @@ export interface SettingsRepository {
   hasYoutubeSecret(): boolean;
   getYoutubeRefreshToken(): string | null;
   setYoutubeRefreshToken(token: string | null): void;
+}
+
+function folderKey(folder: string): string {
+  const k = folder.replace(/[\\/]+$/, '');
+  return process.platform === 'win32' ? k.replace(/\//g, '\\').toLowerCase() : k;
 }
 
 class SqliteSettingsRepository implements SettingsRepository {
@@ -80,25 +85,29 @@ class SqliteSettingsRepository implements SettingsRepository {
       .run(key, JSON.stringify(value));
   }
 
-  getObs(): ObsSettings {
-    const base = (this.getRaw(KEY_OBS) as { host?: string; port?: number } | null) ?? {};
+  getInsights(): InsightsSettings {
+    const v = (this.getRaw(KEY_INSIGHTS) as Partial<InsightsSettings> | null) ?? {};
     return {
-      host: base.host ?? DEFAULT_OBS_SETTINGS.host,
-      port: base.port ?? DEFAULT_OBS_SETTINGS.port,
-      password: this.readPassword(),
+      videoDir: typeof v.videoDir === 'string' ? v.videoDir : '',
+      dbPath: typeof v.dbPath === 'string' ? v.dbPath : '',
     };
   }
 
-  setObs(input: { host: string; port: number; password?: string }): void {
-    this.setRaw(KEY_OBS, { host: input.host, port: input.port });
-    // Only overwrite the password when one is explicitly provided.
-    if (input.password !== undefined) {
-      this.writePassword(input.password);
-    }
+  setInsights(input: InsightsSettings): void {
+    this.setRaw(KEY_INSIGHTS, { videoDir: input.videoDir.trim(), dbPath: input.dbPath.trim() });
   }
 
-  hasObsPassword(): boolean {
-    return this.getRaw(KEY_OBS_PASSWORD) !== null;
+  // Seeding is per folder: pointing the app at a different folder must not
+  // treat that folder's existing recordings as new uploads.
+  isInsightsFolderSeeded(folder: string): boolean {
+    const v = this.getRaw(KEY_INSIGHTS_SEEDED);
+    return Array.isArray(v) && v.includes(folderKey(folder));
+  }
+
+  markInsightsFolderSeeded(folder: string): void {
+    const v = this.getRaw(KEY_INSIGHTS_SEEDED);
+    const list = Array.isArray(v) ? (v as string[]) : [];
+    if (!list.includes(folderKey(folder))) this.setRaw(KEY_INSIGHTS_SEEDED, [...list, folderKey(folder)]);
   }
 
   getRetention(): RetentionPolicy {
@@ -165,14 +174,6 @@ class SqliteSettingsRepository implements SettingsRepository {
 
   setYoutubeRefreshToken(token: string | null): void {
     this.writeEncrypted(KEY_YT_TOKEN, token ?? '');
-  }
-
-  private readPassword(): string {
-    return this.readEncrypted(KEY_OBS_PASSWORD);
-  }
-
-  private writePassword(password: string): void {
-    this.writeEncrypted(KEY_OBS_PASSWORD, password);
   }
 
   // Generic secret storage: base64 of a safeStorage-encrypted blob, or '' when

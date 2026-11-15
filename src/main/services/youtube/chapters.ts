@@ -1,4 +1,4 @@
-import type { MatchEvent } from '@shared/types';
+import type { Game, MatchEvent } from '@shared/types';
 
 // YouTube renders chapters only when the description contains >= 3 timestamps,
 // the first one is 00:00, they ascend, and each chapter is >= 10s long.
@@ -41,6 +41,11 @@ export function formatTimestamp(totalSeconds: number): string {
 }
 
 function labelFor(e: MatchEvent): string | null {
+  if (e.eventType === 'RoundStart') {
+    const p = (e.payload ?? {}) as { Round?: number; Side?: string | null };
+    const side = p.Side === 'attack' ? ' (attack)' : p.Side === 'defense' ? ' (defense)' : '';
+    return `Round ${p.Round ?? '?'}${side}`;
+  }
   const base = CHAPTER_LABELS[e.eventType];
   if (!base) return null;
   if (e.killerName && (e.eventType === 'DragonKill' || e.eventType === 'BaronKill')) {
@@ -56,6 +61,8 @@ function labelFor(e: MatchEvent): string | null {
 // `offsetSeconds` shifts in-game time to recording-relative time
 // (offset = (gameStartedAt - recordingStartedAt) / 1000).
 export function buildChapterLines(events: MatchEvent[], offsetSeconds: number): ChapterLine[] {
+  // Note: offset can be negative (Insights started after GameStart); events
+  // that fall before the video start clamp to 0 and collapse into chapter one.
   const candidates: ChapterLine[] = [];
   for (const e of events) {
     const label = labelFor(e);
@@ -66,9 +73,12 @@ export function buildChapterLines(events: MatchEvent[], offsetSeconds: number): 
 
   // YouTube requires the first chapter at 0:00. Always anchor one there.
   const lines: ChapterLine[] = [{ atSeconds: 0, label: 'Game start' }];
-  // A captured GameStart becomes that anchor rather than a second "Game start"
-  // line a few seconds in (the pre-game buffer is absorbed into chapter one).
-  if (candidates.length > 0 && candidates[0].label === 'Game start') {
+  // A captured GameStart (or Valorant's round 1) becomes that anchor rather
+  // than a second line a few seconds in (the pre-game buffer is absorbed into
+  // chapter one).
+  const first = candidates[0]?.label;
+  if (first === 'Game start' || first === 'Round 1' || first?.startsWith('Round 1 (')) {
+    lines[0] = { atSeconds: 0, label: candidates[0].label };
     candidates.shift();
   }
   for (const c of candidates) {
@@ -89,9 +99,16 @@ export function buildChapterLines(events: MatchEvent[], offsetSeconds: number): 
 // Build the full YouTube description. When too few valid chapters exist we omit
 // timestamps entirely (YouTube would ignore a <3 set anyway) and return a plain
 // description so the upload still succeeds.
-export function buildDescription(events: MatchEvent[], offsetSeconds: number): BuiltDescription {
+export function buildDescription(
+  events: MatchEvent[],
+  offsetSeconds: number,
+  game: Game = 'lol'
+): BuiltDescription {
   const lines = buildChapterLines(events, offsetSeconds);
-  const footer = 'Recorded automatically with Never Tilt Again.';
+  const footer =
+    game === 'valorant'
+      ? 'Recorded with Insights Capture; uploaded automatically with Never Tilt Again.'
+      : 'Recorded automatically with Never Tilt Again.';
 
   if (lines.length < MIN_CHAPTERS) {
     return { description: footer, chapterCount: 0 };

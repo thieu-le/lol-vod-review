@@ -17,11 +17,13 @@ export function useRecorder() {
     const offStatus = window.api.recorder.onStatusChanged(setStatus);
     const offStarted = window.api.recorder.onMatchStarted(() => void refreshMatches());
     const offEnded = window.api.recorder.onMatchEnded(() => void refreshMatches());
+    const offIngested = window.api.recorder.onMatchIngested(() => void refreshMatches());
 
     return () => {
       offStatus();
       offStarted();
       offEnded();
+      offIngested();
     };
   }, [refreshMatches]);
 

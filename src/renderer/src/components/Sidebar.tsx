@@ -3,16 +3,14 @@ import type { RecorderStatus } from '@shared/types';
 
 export type Tab = 'matches' | 'settings';
 
-const OBS_DOT: Record<string, string> = {
-  connected: 'bg-win',
-  connecting: 'bg-yellow-400',
-  disconnected: 'bg-loss',
+const INSIGHTS_DOT: Record<string, string> = {
+  watching: 'bg-win',
+  folder_missing: 'bg-loss',
 };
 
-const OBS_LABEL: Record<string, string> = {
-  connected: 'OBS connected',
-  connecting: 'OBS connecting…',
-  disconnected: 'OBS offline',
+const INSIGHTS_LABEL: Record<string, string> = {
+  watching: 'Watching Insights',
+  folder_missing: 'Insights folder missing',
 };
 
 function NavItem({
@@ -51,7 +49,7 @@ export function Sidebar({
   onTab: (tab: Tab) => void;
   status: RecorderStatus | null;
 }) {
-  const obs = status?.obs ?? 'disconnected';
+  const insights = status?.insights.state ?? 'folder_missing';
 
   return (
     <aside className="flex w-[220px] shrink-0 flex-col border-r border-edge bg-panel/60 backdrop-blur-md">
@@ -82,8 +80,8 @@ export function Sidebar({
 
       <div className="mt-auto border-t border-edge px-5 py-4">
         <div className="flex items-center gap-2 font-label text-xs text-gray-400">
-          <span className={`h-2 w-2 rounded-full ${OBS_DOT[obs]}`} />
-          {OBS_LABEL[obs]}
+          <span className={`h-2 w-2 rounded-full ${INSIGHTS_DOT[insights]}`} />
+          {INSIGHTS_LABEL[insights]}
         </div>
       </div>
     </aside>

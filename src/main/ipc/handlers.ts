@@ -2,21 +2,18 @@ import { ipcMain, shell, type BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { IPC, PUSH } from '@shared/ipc-contract';
 import type {
-  ObsApplyResult,
-  ObsRecordingConfig,
-  ObsSettingsView,
-  ObsTestResult,
+  InsightsSettingsView,
   VodOpenResult,
   YoutubeConnectResult,
   YoutubeSettingsView,
 } from '@shared/ipc-contract';
-import { OBS_NVENC_ENCODER, RETENTION_POLICY, UPLOAD_MODE } from '@shared/types';
+import { RETENTION_POLICY, UPLOAD_MODE } from '@shared/types';
 import { toMessage } from '../lib/errors';
 import { createLogger } from '../lib/logger';
 import { matchRepository } from '../services/database/repositories/matchRepository';
 import { eventRepository } from '../services/database/repositories/eventRepository';
 import { settingsRepository } from '../services/database/repositories/settingsRepository';
-import { obsClient } from '../services/obs/obsClient';
+import { insightsWatcher } from '../services/insights/insightsWatcher';
 import { recorderController } from '../services/recorder/recorderController';
 import { retroBackfillAll } from '../services/recorder/backfill';
 import { uploadController } from '../services/youtube/uploadController';
@@ -32,10 +29,9 @@ const logger = createLogger('ipc');
 
 const idSchema = z.string().uuid();
 const listSchema = z.number().int().positive().max(500).optional();
-const obsInputSchema = z.object({
-  host: z.string().min(1).max(255),
-  port: z.number().int().min(1).max(65535),
-  password: z.string().max(512).optional(),
+const insightsInputSchema = z.object({
+  videoDir: z.string().max(1024),
+  dbPath: z.string().max(1024),
 });
 const retentionSchema = z.enum(RETENTION_POLICY);
 const youtubeInputSchema = z.object({
@@ -44,9 +40,12 @@ const youtubeInputSchema = z.object({
   uploadMode: z.enum(UPLOAD_MODE),
 });
 
-function obsView(): ObsSettingsView {
-  const s = settingsRepository().getObs();
-  return { host: s.host, port: s.port, hasPassword: settingsRepository().hasObsPassword() };
+function insightsView(): InsightsSettingsView {
+  return {
+    settings: settingsRepository().getInsights(),
+    status: insightsWatcher.getStatus(),
+    resolvedDbPath: insightsWatcher.resolvePaths().dbPath,
+  };
 }
 
 function youtubeView(): YoutubeSettingsView {
@@ -101,40 +100,17 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   ipcMain.handle(IPC.recorderStartManual, () => recorderController.startManual());
   ipcMain.handle(IPC.recorderStopManual, () => recorderController.stopManual());
 
-  ipcMain.handle(IPC.obsTestConnection, async (): Promise<ObsTestResult> => {
-    try {
-      const info = await obsClient.testConnection();
-      return { ok: true, obsVersion: info.obsVersion, websocketVersion: info.websocketVersion };
-    } catch (err) {
-      return { ok: false, error: toMessage(err) };
-    }
-  });
-
-  ipcMain.handle(IPC.obsGetRecordingConfig, async (): Promise<ObsRecordingConfig | null> => {
-    try {
-      return await obsClient.getRecordingConfig();
-    } catch {
-      return null; // not connected / request failed — UI shows "unknown"
-    }
-  });
-
-  ipcMain.handle(IPC.obsApplyRecommended, async (_e, encoder: unknown): Promise<ObsApplyResult> => {
-    try {
-      const enc = z.enum(OBS_NVENC_ENCODER).parse(encoder);
-      const res = await obsClient.applyRecommendedRecording(enc);
-      return { ok: true, applied: res.applied, warnings: res.warnings };
-    } catch (err) {
-      return { ok: false, error: toMessage(err) };
-    }
-  });
-
   ipcMain.handle(IPC.maintenanceBackfill, () => retroBackfillAll());
 
-  ipcMain.handle(IPC.settingsGetObs, () => obsView());
-  ipcMain.handle(IPC.settingsSetObs, (_e, input: unknown) => {
-    const parsed = obsInputSchema.parse(input);
-    settingsRepository().setObs(parsed);
-    return obsView();
+  ipcMain.handle(IPC.settingsGetInsights, () => insightsView());
+  ipcMain.handle(IPC.settingsSetInsights, (_e, input: unknown) => {
+    settingsRepository().setInsights(insightsInputSchema.parse(input));
+    insightsWatcher.scanNow();
+    return insightsView();
+  });
+  ipcMain.handle(IPC.insightsScanNow, () => {
+    insightsWatcher.scanNow();
+    return insightsView();
   });
 
   ipcMain.handle(IPC.settingsGetRetention, () => settingsRepository().getRetention());
@@ -165,6 +141,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   ipcMain.handle(IPC.youtubeConnect, async (): Promise<YoutubeConnectResult> => {
     try {
       const status = await youtubeConnect();
+      uploadController.resume(); // send anything queued while disconnected
       return { ok: true, status };
     } catch (err) {
       return { ok: false, error: toMessage(err), status: getAuthStatus() };
@@ -196,7 +173,7 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
     return uploadController.getJobForMatch(idSchema.parse(id));
   });
 
-  // Push events: forward controller/OBS state to the renderer.
+  // Push events: forward controller/watcher state to the renderer.
   const send = (channel: string, payload: unknown) => {
     const win = getWindow();
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -204,9 +181,12 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
 
   recorderController.on('status', (status) => send(PUSH.recorderStatusChanged, status));
   recorderController.on('matchStarted', (match) => send(PUSH.matchStarted, match));
-  recorderController.on('matchEnded', (match) => {
-    send(PUSH.matchEnded, match);
-    // Auto-upload finished matches when the user opted in.
+  recorderController.on('matchEnded', (match) => send(PUSH.matchEnded, match));
+  // Every new Insights recording (League or Valorant) lands here once its file
+  // is finished; queue it for YouTube when auto-upload is on. If no account is
+  // connected yet the job waits in the queue until one is.
+  insightsWatcher.on('ingested', (match) => {
+    send(PUSH.matchIngested, match);
     uploadController.enqueueIfAuto(match.id);
   });
 

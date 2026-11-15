@@ -93,7 +93,7 @@ export function SeekerTimeline({
               );
             })
           : events.map((e) => {
-              const rec = offsetSeconds + e.eventTimeSeconds;
+              const rec = Math.max(0, offsetSeconds + e.eventTimeSeconds);
               const pct = Math.min(100, Math.max(0, (rec / spanSeconds) * 100));
               return (
                 <button

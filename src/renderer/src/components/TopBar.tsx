@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CircleDot, Square, TriangleAlert } from 'lucide-react';
+import { TriangleAlert } from 'lucide-react';
 import type { RecorderStatus } from '@shared/types';
 
 function fmtElapsed(ms: number): string {
@@ -41,17 +41,19 @@ function useRecordingElapsed(status: RecorderStatus | null): string | null {
   return elapsed;
 }
 
-const OBS_CHIP: Record<string, { cls: string; label: string }> = {
-  connected: { cls: 'bg-win/15 text-win-text', label: 'OBS LIVE' },
-  connecting: { cls: 'bg-yellow-500/15 text-yellow-300', label: 'OBS …' },
-  disconnected: { cls: 'bg-loss/15 text-loss-text', label: 'OBS OFFLINE' },
+const INSIGHTS_CHIP: Record<string, { cls: string; label: string }> = {
+  watching: { cls: 'bg-win/15 text-win-text', label: 'INSIGHTS' },
+  folder_missing: { cls: 'bg-loss/15 text-loss-text', label: 'INSIGHTS FOLDER MISSING' },
 };
 
+// Recording is done by Insights Capture; this bar shows whether a League game
+// is being tracked live and whether the Insights folder is being watched.
 export function TopBar({ status }: { status: RecorderStatus | null }) {
   const state = status?.state ?? 'idle';
-  const obs = status?.obs ?? 'disconnected';
+  const insights = status?.insights.state ?? 'folder_missing';
   const elapsed = useRecordingElapsed(status);
   const inGame = state === 'in_game';
+  const chip = INSIGHTS_CHIP[insights] ?? INSIGHTS_CHIP.folder_missing;
 
   return (
     <header className="flex items-center justify-between border-b border-edge bg-panel/60 px-6 py-3 backdrop-blur-md">
@@ -60,8 +62,11 @@ export function TopBar({ status }: { status: RecorderStatus | null }) {
       </h2>
 
       <div className="flex items-center gap-3">
-        {status?.lastError && (
-          <span title={status.lastError} className="text-loss-text">
+        {(status?.lastError || status?.insights.lastError) && (
+          <span
+            title={status?.insights.lastError ?? status?.lastError ?? ''}
+            className="text-loss-text"
+          >
             <TriangleAlert size={15} />
           </span>
         )}
@@ -69,7 +74,7 @@ export function TopBar({ status }: { status: RecorderStatus | null }) {
         {inGame ? (
           <span className="chip bg-loss/15 text-loss-text">
             <span className="h-2 w-2 animate-pulse rounded-full bg-loss" />
-            REC
+            IN GAME
             {elapsed && <span className="ml-1 font-mono text-xs tabular-nums">{elapsed}</span>}
           </span>
         ) : state === 'post_game' ? (
@@ -84,26 +89,12 @@ export function TopBar({ status }: { status: RecorderStatus | null }) {
           </span>
         )}
 
-        <span className={`chip ${OBS_CHIP[obs].cls}`}>{OBS_CHIP[obs].label}</span>
-
-        {inGame ? (
-          <button
-            onClick={() => void window.api.recorder.stopManual()}
-            className="btn-danger flex items-center gap-2 !py-1.5"
-          >
-            <Square size={13} />
-            Stop Recording
-          </button>
-        ) : (
-          <button
-            onClick={() => void window.api.recorder.startManual()}
-            disabled={state === 'post_game'}
-            className="btn-primary flex items-center gap-2 !py-1.5"
-          >
-            <CircleDot size={13} />
-            Start Recording
-          </button>
-        )}
+        <span
+          className={`chip ${chip.cls}`}
+          title={status?.insights.videoDir ? `Watching ${status.insights.videoDir}` : undefined}
+        >
+          {chip.label}
+        </span>
       </div>
     </header>
   );

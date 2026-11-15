@@ -1,22 +1,22 @@
 import type { RecorderStatus } from '@shared/types';
 
-// Shown when OBS isn't connected: without it, games won't record. We treat
-// "connecting" as transient and stay quiet, only nagging on a hard disconnect.
-export function ObsBanner({
+// Shown when the Insights Capture video folder can't be found: without it, no
+// recordings reach the library or YouTube.
+export function InsightsBanner({
   status,
   onOpenSettings,
 }: {
   status: RecorderStatus | null;
   onOpenSettings: () => void;
 }) {
-  const obs = status?.obs ?? 'disconnected';
-  if (obs !== 'disconnected') return null;
+  if (!status || status.insights.state !== 'folder_missing') return null;
 
   return (
     <div className="flex items-center justify-between gap-4 border-b border-yellow-700/40 bg-yellow-500/10 px-6 py-2 text-sm text-yellow-200">
       <span>
-        <span className="font-semibold">OBS isn’t connected.</span> Games won’t record until you
-        enable the OBS WebSocket server (Tools → WebSocket Server Settings) and connect here.
+        <span className="font-semibold">Insights Capture folder not found.</span> New recordings
+        won’t be picked up until the folder exists or you point Settings at the right one
+        {status.insights.videoDir ? ` (looking in ${status.insights.videoDir})` : ''}.
       </span>
       <button
         onClick={onOpenSettings}
